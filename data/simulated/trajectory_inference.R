@@ -1,5 +1,5 @@
 # https://www.bioconductor.org/packages/devel/bioc/vignettes/slingshot/inst/doc/vignette.html#using-slingshot
-# /tradeSeqPaper-master/simulation/sim2_dyntoy_bifurcating_420190326_evaluateAllDyntoyBifurcating_R3.6.R
+# /tradeSeqPaper/simulation/sim2_dyntoy_bifurcating_420190326_evaluateAllDyntoyBifurcating_R3.6.R
 
 library(mclust)
 library(RColorBrewer)

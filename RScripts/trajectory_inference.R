@@ -8,9 +8,8 @@ library(wesanderson)
 library(Matrix)
 library(slingshot)
 
-path_data <- "~/BA/data/simulated/datasets/"
-path_save <- "~/BA/data/simulated/crv/"
-  
+path_base <- "~/BA/data/"
+
 FQnorm <- function(counts) {
   rk <- apply(counts,2,rank,ties.method='min')
   counts.sort <- apply(counts,2,sort)
@@ -78,27 +77,30 @@ ti_cyclic <- function(data) {
   
   return(pcc)
 }
-  
+
 # Bifurcating
 set.seed(1)
 for (i in 1:10) {
-  data <- readRDS(paste0(path_data, "bifurcating/bifurcatingDataset_", i, ".rds"))
+  sim_dir <- file.path(path_base, "bifurcating", paste0("sim_", i))
+  data <- readRDS(file.path(sim_dir, "dataset.rds"))
   crv <- ti_furcating(data)
-  saveRDS(crv, file=paste0(path_save, "bifurcating/bifurcatingCrv_", i, ".rds"))
+  saveRDS(crv, file = file.path(sim_dir, "crv.rds"))
 }
 
 # Multifrucating
 set.seed(1)
 for (i in 1:10) {
-  data <- readRDS(paste0(path_data, "multifurcating/multifurcatingDataset_", i, ".rds"))
+  sim_dir <- file.path(path_base, "multifurcating", paste0("sim_", i))
+  data <- readRDS(file.path(sim_dir, "dataset.rds"))
   crv <- ti_furcating(data)
-  saveRDS(crv, file=paste0(path_save, "multifurcating/multifurcatingCrv_", i, ".rds"))
+  saveRDS(crv, file = file.path(sim_dir, "crv.rds"))
 }
 
 # Cyclic
 set.seed(1)
 for (i in 1:10) {
-  data <- readRDS(paste0(path_data, "cyclic/cyclicDataset_", i, ".rds"))
+  sim_dir <- file.path(path_base, "cyclic", paste0("sim_", i))
+  data <- readRDS(file.path(sim_dir, "dataset.rds"))
   crv <- ti_cyclic(data)
-  saveRDS(crv, file=paste0(path_save, "cyclic/cyclicCrv_", i, ".rds"))
+  saveRDS(crv, file = file.path(sim_dir, "crv.rds"))
 }

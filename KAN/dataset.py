@@ -17,30 +17,34 @@ class SingleCellDataset(Dataset):
     
 
 def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
-    
-    # 1. Load the raw data
+
+    # Load the raw data
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
     pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
     weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
     
-    # 2. Organize input (pseudotime, weights) and target values (gene counts)
+    # Organize input (pseudotime, weights) and target values (gene counts)
     trajectories = np.hstack((pseudotime.values, weights.values))
     count_values = counts.values
     
-    # 3. Shuffle and split into training and validation
+    # Shuffle and split into training and validation
     n_cells = len(trajectories)
     indices = np.random.permutation(n_cells)
     split_idx = int(n_cells * train_ratio)
     
     train_indices, val_indices = indices[:split_idx], indices[split_idx:]
     
-    # 4. Create the Datasets
+    # Create the Datasets
     train_dataset = SingleCellDataset(trajectories[train_indices], count_values[train_indices])
-    val_dataset = SingleCellDataset(trajectories[val_indices], count_values[val_indices])
+    test_dataset = SingleCellDataset(trajectories[val_indices], count_values[val_indices])
     
-    # 5. Wrap in DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    # Wrap in DataLoaders
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
-    return train_loader, val_loader
+    # Get input and output dimension for the KAN
+    input_dim = trajectories.shape[1]
+    output_dim = count_values.shape[1]
+
+    return train_dataloader, test_dataloader, input_dim, output_dim
     

@@ -18,6 +18,7 @@ extract_furcating <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
+  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)
@@ -33,6 +34,7 @@ extract_cyclic <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
+  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- crv$lambda
@@ -52,6 +54,7 @@ extract_paul <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
+  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)
@@ -69,13 +72,13 @@ extract_paul <- function(data, crv) {
 process_dataset <- function(category, iter = NULL) {
   # Paul dataset does not have multiple simulations
   if (is.null(iter)) {
-    instance_dir <- paste0(path_base, category, "/")
+    sim_dir <- paste0(path_base, category, "/")
   } else {
-    instance_dir <- paste0(path_base, category, "/sim_", iter, "/")
+    sim_dir <- paste0(path_base, category, "/sim_", iter, "/")
   }
   
-  data_path <- paste0(instance_dir, "dataset.rds")
-  crv_path  <- paste0(instance_dir, "crv.rds")
+  data_path <- paste0(sim_dir, "dataset.rds")
+  crv_path  <- paste0(sim_dir, "crv.rds")
   
   data <- readRDS(data_path)
   crv  <- readRDS(crv_path)
@@ -88,10 +91,10 @@ process_dataset <- function(category, iter = NULL) {
     res  <- extract_paul(data, crv)
   }
   
-  write.csv(res$counts,     file = paste0(instance_dir, "counts.csv"))
-  write.csv(res$pseudotime, file = paste0(instance_dir, "pseudotime.csv"))
-  write.csv(res$weights,    file = paste0(instance_dir, "weights.csv"))
-  write.csv(res$tde,        file = paste0(instance_dir, "tde.csv"), row.names = FALSE)
+  write.csv(res$counts,     file = paste0(sim_dir, "counts.csv"))
+  write.csv(res$pseudotime, file = paste0(sim_dir, "pseudotime.csv"))
+  write.csv(res$weights,    file = paste0(sim_dir, "weights.csv"))
+  write.csv(res$tde,        file = paste0(sim_dir, "tde.csv"), row.names = FALSE)
 }
 
 categories <- c("bifurcating", "multifurcating", "cyclic")

@@ -1,0 +1,85 @@
+import os
+import numpy as np
+import pandas as pd
+import torch
+import matplotlib.pyplot as plt
+from efficient_kan import KAN
+from model_basic import build_kan
+
+DATA_PATH = "~/BA/data/bifurcating/sim_1/"
+MODEL_PATH = "trained_kan_sim1.pth"
+GENE = 12
+
+def load_data(data_path):
+    counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
+    pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
+    weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
+    return counts, pseudotime, weights
+
+def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
+    model.eval()
+    n_cells = len(counts)
+    n_lineages = weights.shape[1]
+
+    # Assign cells to the lineage where they have the highest weight
+    lineage_assignment = np.argmax(weights.values, axis=1)
+
+    # Get pseduotime along the dominating lineage for each cell -> x value
+    x_scatter = pseudotime.values[np.arange(n_cells), lineage_assignment]
+
+    # Get gene counts of the gene for each cell -> y value
+    y_scatter = counts.values[:, gene_idx]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
+
+    with torch.no_grad():
+        for l in range(n_lineages):
+            # Plot Scatter points for this lineage
+            mask = lineage_assignment == l
+            ax.scatter(x_scatter[mask], y_scatter[mask], s=16, color=colors[l])
+
+            # Pseudotime where lineage ends
+            max_pt = pseudotime.values[:, l].max()
+
+            # Create smooth pseudotime matrix
+            n_points = 66
+            pt_grid = np.linspace(0, max_pt, n_points)
+            pt_input = np.zeros((n_points, n_lineages))
+            pt_input[:, l] = pt_grid
+            
+            # Create weight matrix
+            w_input = np.zeros((n_points, n_lineages))
+            w_input[:, l] = 1.0
+            
+            # Run the model on the simulated data to get a smooth line
+            input = np.hstack((pt_input, w_input))
+            X_tensor = torch.tensor(input, dtype=torch.float32)
+            y_line = model(X_tensor)[:, gene_idx].numpy()
+            
+            # Plot a smooth line
+            ax.plot(pt_grid, y_line, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
+
+            # Plot the individual points            
+            # ax.scatter(pt_grid, y_line, s=32, color=colors[l], label=f"Lineage {l+1}", marker="x")
+
+    ax.set_title(f"Gene: {GENE}")
+    ax.set_xlabel("Pseudotime")
+    ax.set_ylabel("Log(expression + 1)")
+    ax.legend(title="Lineage")
+
+    plt.show()
+
+def main():
+    counts, pseudotime, weights = load_data(DATA_PATH)
+    
+    input_dim = pseudotime.shape[1] + weights.shape[1]
+    output_dim = counts.shape[1]
+
+    model = build_kan(input_dim, output_dim)
+    model.load_state_dict(torch.load(MODEL_PATH))
+
+    plot_smoothers(counts, pseudotime, weights, model, GENE)
+
+if __name__ == "__main__":
+    main()

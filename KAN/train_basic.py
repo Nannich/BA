@@ -2,10 +2,11 @@ from efficient_kan import KAN
 import torch
 from torch import nn
 from dataset import get_dataloaders
+from model_basic import build_kan
 
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
-BATCH_SIZE = 64
-EPOCHS = 32
+BATCH_SIZE = 256
+EPOCHS = 40
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
@@ -26,7 +27,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         # Backpropagation
         loss.backward()
         
-        # TODO: Taken from scKAN, get reason for doing this
+        # Gradient clipping to prevent exploding gradients caused by extreme values
         torch.nn.utils.clip_grad_norm_(model.parameters(), 100.0)
         
         # Update the weights
@@ -35,7 +36,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         # Add loos to running total
         total_loss += loss.item()
 
-    # Calculate and return the average loss for this entire epoch
+    # Calculate and return the average loss for this epoch
     avg_loss = total_loss / len(dataloader)
     return avg_loss
 
@@ -60,20 +61,22 @@ def test_loop(dataloader, model, loss_fn, device):
 
 def main():
     train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(DATA_PATH, batch_size=BATCH_SIZE)
-
-    model = KAN([input_dim, 64, output_dim], grid_size=5, spline_order=3)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = build_kan(input_dim, output_dim)
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cpu"
     model.to(device)
     print(f"Starting training on: {device}")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=0)
 
     loss_fn = nn.MSELoss()
 
     for t in range(EPOCHS):
         train_loss = train_loop(train_dataloader, model, loss_fn, optimizer, device)
         val_loss = test_loop(test_dataloader, model, loss_fn, device)
-        print(f"Epoch [{t+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        print(f"Epoch [{t+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Test Loss: {val_loss:.4f}")
+    
+    torch.save(model.state_dict(), "trained_kan_sim1.pth")
 
 if __name__ == "__main__":
     main()

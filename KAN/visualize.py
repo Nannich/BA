@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from efficient_kan import KAN
-from model_basic import build_kan
+from model import build_kan
 
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
 MODEL_PATH = "trained_kan_sim1.pth"
@@ -55,7 +55,9 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
             # Run the model on the simulated data to get a smooth line
             input = np.hstack((pt_input, w_input))
             X_tensor = torch.tensor(input, dtype=torch.float32)
-            y_line = model(X_tensor)[:, gene_idx].numpy()
+
+            y_line = model(X_tensor)[:, 0].numpy()          # Single Gene only
+            #y_line = model(X_tensor)[:, gene_idx].numpy()   # Multiple Genes
             
             # Plot a smooth line
             ax.plot(pt_grid, y_line, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
@@ -77,7 +79,7 @@ def main():
     output_dim = counts.shape[1]
 
     model = build_kan(input_dim, output_dim)
-    model.load_state_dict(torch.load(MODEL_PATH))
+    model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
 
     plot_smoothers(counts, pseudotime, weights, model, GENE)
 

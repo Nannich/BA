@@ -1,9 +1,3 @@
-# TODO
-# 1. Restrict the model from outputting negative values (Softplus)
-# 2. Fit only a single gene at a time
-# 3. Implement early stopping
-# 4. Use a different loss function
-
 from efficient_kan import KAN
 import torch
 from torch import nn
@@ -11,9 +5,9 @@ from dataset import get_dataloaders
 from model import build_kan
 
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
-BATCH_SIZE = 256
-EPOCHS = 200
-TARGET_GENE = 12
+BATCH_SIZE = 64
+EPOCHS = 2000
+TARGET_GENE = 0
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
@@ -32,14 +26,14 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
 
         # Compute prediction and loss
         pred = model(X)
-        #loss = loss_fn(pred, y)            # All genes
-        loss = loss_fn(pred, y_target)      # Only target gene
+        loss = loss_fn(pred, y)            # All genes
+        #loss = loss_fn(pred, y_target)      # Only target gene
 
         # Backpropagation
         loss.backward()
         
         # Gradient clipping to prevent exploding gradients caused by extreme values
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 100.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         
         # Update the weights
         optimizer.step()
@@ -66,8 +60,8 @@ def test_loop(dataloader, model, loss_fn, device):
             y_target = y[:, TARGET_GENE].unsqueeze(1)
 
             pred = model(X)
-            #loss = loss_fn(pred, y)            # All genes
-            loss = loss_fn(pred, y_target)      # Only target gene
+            loss = loss_fn(pred, y)            # All genes
+            #loss = loss_fn(pred, y_target)      # Only target gene
             total_test_loss += loss.item()
     
     # Calculate the average test loss for the whole dataset
@@ -83,7 +77,7 @@ def main():
     model.to(device)
     print(f"Starting training on: {device}")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=0)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=1e-5)
 
     loss_fn = nn.MSELoss()
 

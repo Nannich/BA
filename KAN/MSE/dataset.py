@@ -23,9 +23,15 @@ def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
     pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
     weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
     
+    # Scale Pseudotime to [0, 1]
+    pt_values = pseudotime.values
+    pt_min = pt_values.min(axis=0, keepdims=True)
+    pt_max = pt_values.max(axis=0, keepdims=True)
+    pt_scaled = (pt_values - pt_min) / (pt_max - pt_min + 1e-8)
+
     # Organize input (pseudotime, weights) and target values (gene counts)
-    trajectories = np.hstack((pseudotime.values, weights.values))
-    count_values = counts.values
+    trajectories = np.hstack((pt_scaled, weights.values))
+    count_values = np.log1p(counts.values)
     
     # Shuffle and split into training and validation
     n_cells = len(trajectories)

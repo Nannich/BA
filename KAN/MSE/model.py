@@ -2,7 +2,7 @@ from efficient_kan import KAN
 from torch import nn
 import torch.nn.functional as F
 
-HIDDEN_LAYERS = [8,8] 
+HIDDEN_LAYERS = [4] 
 GRID_SIZE = 5
 SPLINE_ORDER = 3
 
@@ -13,8 +13,6 @@ class PositiveKAN(nn.Module):
     """
     def __init__(self, input_dim, output_dim):
         super().__init__()
-
-        output_dim = 1   # For fitting a single gene only
 
         # Initialize the standard KAN
         layers = [input_dim] + HIDDEN_LAYERS + [output_dim]

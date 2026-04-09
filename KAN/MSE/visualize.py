@@ -8,7 +8,7 @@ from model import build_kan
 
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
 MODEL_PATH = "trained_kan_sim1.pth"
-GENE = 12
+GENE = 3000         # 0, 12, 3000
 
 def load_data(data_path):
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
@@ -21,6 +21,10 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
     n_cells = len(counts)
     n_lineages = weights.shape[1]
 
+    pt_values = pseudotime.values
+    pt_min = pt_values.min(axis=0, keepdims=True)
+    pt_max = pt_values.max(axis=0, keepdims=True)
+
     # Assign cells to the lineage where they have the highest weight
     lineage_assignment = np.argmax(weights.values, axis=1)
 
@@ -28,7 +32,7 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
     x_scatter = pseudotime.values[np.arange(n_cells), lineage_assignment]
 
     # Get gene counts of the gene for each cell -> y value
-    y_scatter = counts.values[:, gene_idx]
+    y_scatter = np.log1p(counts.values[:, gene_idx])
 
     fig, ax = plt.subplots(figsize=(8, 5))
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
@@ -47,18 +51,19 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
             pt_grid = np.linspace(0, max_pt, n_points)
             pt_input = np.zeros((n_points, n_lineages))
             pt_input[:, l] = pt_grid
+            pt_input_scaled = (pt_input - pt_min) / (pt_max - pt_min + 1e-8)
             
             # Create weight matrix
             w_input = np.zeros((n_points, n_lineages))
             w_input[:, l] = 1.0
             
             # Run the model on the simulated data to get a smooth line
-            input = np.hstack((pt_input, w_input))
-            X_tensor = torch.tensor(input, dtype=torch.float32)
+            input_matrix = np.hstack((pt_input_scaled, w_input))
+            X_tensor = torch.tensor(input_matrix, dtype=torch.float32)
 
-            y_line = model(X_tensor)[:, 0].numpy()          # Single Gene only
-            #y_line = model(X_tensor)[:, gene_idx].numpy()   # Multiple Genes
-            
+            #y_line = model(X_tensor)[:, 0].numpy()          
+            y_line = model(X_tensor)[:, gene_idx].numpy()   # Multiple Genes
+
             # Plot a smooth line
             ax.plot(pt_grid, y_line, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
 
@@ -76,7 +81,8 @@ def main():
     counts, pseudotime, weights = load_data(DATA_PATH)
     
     input_dim = pseudotime.shape[1] + weights.shape[1]
-    output_dim = counts.shape[1]
+    output_dim = counts.shape[1] # For all genes
+    #output_dim = 1 # For only one gene
 
     model = build_kan(input_dim, output_dim)
     model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))

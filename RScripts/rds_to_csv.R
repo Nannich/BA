@@ -18,7 +18,6 @@ extract_furcating <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
-  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)
@@ -34,7 +33,6 @@ extract_cyclic <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
-  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- crv$lambda
@@ -54,7 +52,6 @@ extract_paul <- function(data, crv) {
   # Normalize counts
   counts <- t(as.matrix(counts))
   counts <- FQnorm(counts)
-  counts <- log1p(counts)
   counts <- t(counts) # Output: Cells x Genes
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)

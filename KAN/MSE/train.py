@@ -7,7 +7,7 @@ from model import build_kan
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
 BATCH_SIZE = 64
 EPOCHS = 2000
-TARGET_GENE = 0
+TARGET_GENE = 12
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
@@ -18,16 +18,14 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
 
-        # For only fitting a single gene
-        y_target = y[:, TARGET_GENE].unsqueeze(1)
-
         # Clear old gradients
         optimizer.zero_grad()
 
         # Compute prediction and loss
         pred = model(X)
-        loss = loss_fn(pred, y)            # All genes
-        #loss = loss_fn(pred, y_target)      # Only target gene
+        loss = loss_fn(pred, y)                         # All Genes
+        # y_target = y[:, TARGET_GENE].unsqueeze(1)     # Single Gene
+        # loss = loss_fn(pred, y_target)                # Single Gene
 
         # Backpropagation
         loss.backward()
@@ -55,13 +53,12 @@ def test_loop(dataloader, model, loss_fn, device):
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
-            
-            # For only fitting a single gene
-            y_target = y[:, TARGET_GENE].unsqueeze(1)
 
             pred = model(X)
-            loss = loss_fn(pred, y)            # All genes
-            #loss = loss_fn(pred, y_target)      # Only target gene
+            loss = loss_fn(pred, y)                         # All Genes
+            # y_target = y[:, TARGET_GENE].unsqueeze(1)     # Single Gene
+            # loss = loss_fn(pred, y_target)                # Single Gene
+
             total_test_loss += loss.item()
     
     # Calculate the average test loss for the whole dataset
@@ -91,7 +88,6 @@ def main():
         val_loss = test_loop(test_dataloader, model, loss_fn, device)
         print(f"Epoch [{t+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Test Loss: {val_loss:.4f}")
 
-        # Early Stopping
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0

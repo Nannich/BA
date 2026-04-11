@@ -1,4 +1,5 @@
 import os
+import argparse
 import numpy as np
 import pandas as pd
 import torch
@@ -8,7 +9,7 @@ from model import build_kan
 
 DATA_PATH = "~/BA/data/bifurcating/sim_1/"
 MODEL_PATH = "trained_kan_sim1.pth"
-GENE = 3000         # 0, 12, 3000
+GENE = 12        # 0, 12, 300, 3000
 
 def load_data(data_path):
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
@@ -47,7 +48,7 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
             max_pt = pseudotime.values[:, l].max()
 
             # Create smooth pseudotime matrix
-            n_points = 66
+            n_points = 200
             pt_grid = np.linspace(0, max_pt, n_points)
             pt_input = np.zeros((n_points, n_lineages))
             pt_input[:, l] = pt_grid
@@ -70,7 +71,7 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
             # Plot the individual points            
             # ax.scatter(pt_grid, y_line, s=32, color=colors[l], label=f"Lineage {l+1}", marker="x")
 
-    ax.set_title(f"Gene: {GENE}")
+    ax.set_title(f"Gene: {gene_idx}")
     ax.set_xlabel("Pseudotime")
     ax.set_ylabel("Log(expression + 1)")
     ax.legend(title="Lineage")
@@ -78,6 +79,12 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
     plt.show()
 
 def main():
+    # Get the gene index from the command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("gene", type=int)
+    args = parser.parse_args()
+    gene_idx = args.gene
+
     counts, pseudotime, weights = load_data(DATA_PATH)
     
     input_dim = pseudotime.shape[1] + weights.shape[1]
@@ -87,7 +94,7 @@ def main():
     model = build_kan(input_dim, output_dim)
     model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
 
-    plot_smoothers(counts, pseudotime, weights, model, GENE)
+    plot_smoothers(counts, pseudotime, weights, model, gene_idx)
 
 if __name__ == "__main__":
     main()

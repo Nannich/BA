@@ -16,7 +16,12 @@ class PositiveKAN(nn.Module):
 
         # Initialize the standard KAN
         layers = [input_dim] + HIDDEN_LAYERS + [output_dim]
-        self.kan = KAN(layers, grid_size=GRID_SIZE, spline_order=SPLINE_ORDER)
+        self.kan = KAN(
+            layers, 
+            grid_size=GRID_SIZE, 
+            spline_order=SPLINE_ORDER,
+            grid_range=[0, 1]  # Both weights and pt are scaled to [0, 1]
+        )
 
     def forward(self, x):
         raw_output = self.kan(x)

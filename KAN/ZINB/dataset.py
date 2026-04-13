@@ -17,13 +17,12 @@ class SingleCellDataset(Dataset):
     
 
 def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
-
     # Load the raw data
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
     pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
     weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
     
-    # Scale Pseudotime to [0, 1]
+    # Scale Pseudotime to [0, 1] to match the KAN grid
     pt_values = pseudotime.values
     pt_min = pt_values.min(axis=0, keepdims=True)
     pt_max = pt_values.max(axis=0, keepdims=True)
@@ -31,7 +30,7 @@ def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
 
     # Organize input (pseudotime, weights) and target values (gene counts)
     trajectories = np.hstack((pt_scaled, weights.values))
-    count_values = np.round(counts.values) # ZINB loss expects integers (add log before rounding?)
+    count_values = np.round(counts.values)
     
     # Shuffle and split into training and validation
     n_cells = len(trajectories)
@@ -48,9 +47,9 @@ def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
-    # Get input and output dimension for the KAN
+    # Calculate input and output dimension for the KAN
     input_dim = trajectories.shape[1]
-    output_dim = count_values.shape[1] * 3  # Genes * Paramters (mu, theta, pi)
+    output_dim = count_values.shape[1] * 3  # Genes * three parameters (mu, theta, pi) for ZINBloss
 
     return train_dataloader, test_dataloader, input_dim, output_dim
     

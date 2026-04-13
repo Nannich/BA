@@ -2,11 +2,11 @@ from efficient_kan import KAN
 from torch import nn
 import torch.nn.functional as F
 
-HIDDEN_LAYERS = [64] 
-GRID_SIZE = 10
+HIDDEN_LAYERS = [128] 
+GRID_SIZE = 8
 SPLINE_ORDER = 3
 
-class PositiveKAN(nn.Module):
+class zinbKAN(nn.Module):
     """
     A wrapper that forces the KAN to output strictly positive values
     becaue gene expression can not be less than zero in reality.
@@ -32,7 +32,7 @@ class PositiveKAN(nn.Module):
         theta = raw_output[:, n_genes:n_genes*2]
         pi =    raw_output[:, n_genes * 2:]
 
-        return F.softplus(mu), F.softplus(theta), F.sigmoid(pi)
+        return mu, theta, pi
 
 def build_kan(input_dim, output_dim):
-    return PositiveKAN(input_dim, output_dim)
+    return zinbKAN(input_dim, output_dim)

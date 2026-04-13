@@ -9,8 +9,8 @@ DATA_PATH = "~/BA/data/bifurcating/sim_1/"
 BATCH_SIZE = 64
 EPOCHS = 2000
 TARGET_GENE = 12
-LR = 1e-2                
-WEIGHT_DECAY = 0      
+LR = 1e-3
+WEIGHT_DECAY = 1e-4     
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
@@ -26,6 +26,10 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
 
         # Compute prediction and loss
         mu, theta, pi = model(X)
+
+
+        #mu.register_hook(lambda grad: print(f"Max Gradient into MU: {grad.abs().max().item():.12f}"))
+
         loss = loss_fn(y, mu, theta, pi)                # All Genes
         # y_target = y[:, TARGET_GENE].unsqueeze(1)     # Single Gene
         # loss = loss_fn(pred, y_target)                # Single Gene
@@ -36,6 +40,9 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         # Gradient clipping to prevent exploding gradients caused by extreme values
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         
+        #first_layer_spline_grad = model.kan.layers[0].spline_weight.grad.abs().mean().item()
+        #print(f"First Layer Spline Grad: {first_layer_spline_grad:.6f}")
+
         # Update the weights
         optimizer.step()
         

@@ -18,6 +18,14 @@ def load_data(data_path):
     weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
     return counts, pseudotime, weights
 
+
+def get_lineage_assignment(weights):
+    sensitivity = 0.1
+    max_weights = np.max(weights.values, axis=1, keepdims=True)
+    lineage_assignment = np.abs(max_weights - weights.values) < sensitivity
+
+    return lineage_assignment
+
 def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
     model.eval()
     n_cells = len(counts)
@@ -28,42 +36,63 @@ def plot_smoothers(counts, pseudotime, weights, model, gene_idx):
     pt_max = pt_values.max(axis=0, keepdims=True)
 
     # Assign cells to the lineage where they have the highest weight
-    lineage_assignment = np.argmax(weights.values, axis=1)
-
-    # Get pseduotime along the dominating lineage for each cell -> x value
-    x_scatter = pseudotime.values[np.arange(n_cells), lineage_assignment]
-
-    # Get gene counts of the gene for each cell -> y value
-    y_scatter = np.log1p(counts.values[:, gene_idx])
+    lineage_assignment = get_lineage_assignment(weights)
 
     fig, ax = plt.subplots(figsize=(8, 5))
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
 
     with torch.no_grad():
         for l in range(n_lineages):
-            # Plot Scatter points for this lineage
-            mask = lineage_assignment == l
-            ax.scatter(x_scatter[mask], y_scatter[mask], s=16, color=colors[l])
+            # Get the mask for the current lineage
+            mask = lineage_assignment[:,l]
+
+            # Extract pt and counts of cells assigned to this lineage for the plot
+            # Each cell is one point where x is pseudotime and y is count
+            pt_active = pseudotime.values[mask, l]
+            log_count_active = np.log1p(counts.values[mask, gene_idx])
+            ax.scatter(pt_active, log_count_active, s=16, color=colors[l])
+
+            # Sort weights and pseudotime of the cells of the current lineage by pt
+            sort_idx = np.argsort(pt_active)
+            pt_active_sorted = pt_active[sort_idx]
+            weights_sorted = weights.values[mask][sort_idx]
 
             # Pseudotime where lineage ends
-            max_pt = pseudotime.values[:, l].max()
+            pt_active_max = pseudotime.values[:, l].max()
 
-            # Create smooth pseudotime matrix
             n_points = 200
-            pt_grid = np.linspace(0, max_pt, n_points)
+
+            # Create smooth pseudotime matrix as input for plotting
+            pt_grid = np.linspace(0, pt_active_max, n_points)
             pt_input = np.zeros((n_points, n_lineages))
             pt_input[:, l] = pt_grid
+            
+            for k in range(n_lineages):
+                if k != l:
+                    pt_inactive = pseudotime.values[mask, k]
+                    pt_inactive_sorted = pt_inactive[sort_idx]
+                    pt_fitted = np.polyfit(pt_active_sorted, pt_inactive_sorted, deg=3)
+                    f_inactive_pt = np.poly1d(pt_fitted)
+                    pt_input[:, k] = np.clip(f_inactive_pt(pt_grid), 0.0, None)
+
+            # Scale Pseudotime to [0,1]
             pt_input_scaled = (pt_input - pt_min) / (pt_max - pt_min + 1e-8)
             
-            # Create weight matrix
+            # Create smooth weights matrix as input for plotting
             w_input = np.zeros((n_points, n_lineages))
-            w_input[:, l] = 1.0
-            
+            for k in range(n_lineages):
+                w = weights_sorted[:,k]
+                w_fitted = np.polyfit(pt_active_sorted, w, deg=3)
+                f_w = np.poly1d(w_fitted)
+                w_input[:, k] = np.clip(f_w(pt_grid), 0.0, 1)
+
             # Run the model on the simulated data to get a smooth line
             input_matrix = np.hstack((pt_input_scaled, w_input))
+            #print("Input", input_matrix)
             X_tensor = torch.tensor(input_matrix, dtype=torch.float32)
             mu, theta, pi = model(X_tensor)
-            y_line = mu[:, gene_idx].numpy()                            # All Genes
+            y_line = mu[:, gene_idx].numpy()  
+            y_line = np.exp(y_line)                         
             y_line = np.log1p(y_line)
             # y_line = model(X_tensor)[:, 0].numpy()                    # Single Gene
 

@@ -89,7 +89,7 @@ def plot_smoothers(counts, pseudotime, weights, model, model_name, gene_idx, is_
     ax.legend(title="Lineage")
 
     plot_parameters(ax, model, model_name, is_single_gene)
-    
+
     plt.savefig(fig_path, bbox_inches="tight", dpi=300)
     plt.show()
 
@@ -103,7 +103,7 @@ def run_visualization(args):
     dataset = args.dataset
     sim = args.sim
 
-    model_path = os.path.join(model_dir, dataset ,model_name)
+    model_path = os.path.join(model_dir, dataset, model_name)
     data_path = os.path.join(args.data_dir, dataset, f"sim_{sim}/")
 
     counts, pseudotime, weights = load_data(data_path)
@@ -115,7 +115,7 @@ def run_visualization(args):
     output_dim = checkpoint["output_dim"]
     model_gene = checkpoint["gene"]
 
-    fig_path = os.path.join(fig_dir, "symbolic", dataset, f"sim{sim}_gene{gene}.png")
+    fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_sim{sim}_gene{gene}.png")
 
     is_single_gene = model_gene is not None
     

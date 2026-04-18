@@ -1,20 +1,18 @@
-from efficient_kan import KAN
 import torch
-import argparse
 import os
 from dataset import get_dataloaders
 from model import build_model
 from loss import ZINBLoss
 
-SIM = 1
-DATA_PATH = os.path.expanduser(f"~/BA/data/bifurcating/sim_{SIM}/")
-MODEL_PATH = os.path.expanduser("~/BA/KAN/ZINB/models/")
+
 BATCH_SIZE = 64
 EPOCHS = 2000
 TARGET_GENE = 12
 LR = 5e-3
 WEIGHT_DECAY = 1e-5
 GRADIENT_CLIP_LIMIT = 5
+PATIENCE = 16
+
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
@@ -67,27 +65,33 @@ def test_loop(dataloader, model, loss_fn, device):
 
     return total_test_loss / len(dataloader)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=["effkan", "pykan", "mlp"], default="effkan")
-    parser.add_argument("--gene", type=int, default=None) # Choose None to fit all genes at the same time
-    args = parser.parse_args()
+
+def run_training(args):
+    sim = args.sim
+    data_dir = args.data_dir
+    model_type = args.model
+    model_dir = args.model_dir
+    target_gene = args.gene
+    dataset = args.dataset
+    
+    data_path = os.path.join(data_dir, dataset, f"sim_{sim}/")
 
     # Load data
-    train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(DATA_PATH, target_gene=args.gene, batch_size=BATCH_SIZE)
+    train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(data_path, target_gene, BATCH_SIZE)
     
     # Initialize the model
-    model = build_model(args.model, input_dim, output_dim)
+    model = build_model(model_type, input_dim, output_dim)
     checkpoint = {
         "input_dim": input_dim,
         "output_dim": output_dim,
-        "model": args.model,
-        "gene": args.gene,
+        "model": model_type,
+        "gene": target_gene,
         "state_dict": model.state_dict()
     }
 
-    gene_str = f"gene{args.gene}" if args.gene is not None else "all"
-    save_path = f"{MODEL_PATH}{args.model}_sim{SIM}_{gene_str}.pth"
+    gene_str = f"gene{target_gene}" if target_gene is not None else "all"
+    filename = f"{model_type}_sim{sim}_{gene_str}.pth"
+    model_path = os.path.join(model_dir, dataset, filename)
 
     #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = "cpu"
@@ -100,7 +104,6 @@ def main():
 
     # Early Stopping Setup
     # Stops training if validation loss doesn't improve for patience consecutive epochs
-    patience = 16
     best_val_loss = float('inf')
     epochs_no_improve = 0
 
@@ -118,13 +121,10 @@ def main():
             epochs_no_improve = 0
             # Only save the model when it actually improves
             checkpoint["state_dict"] = model.state_dict()
-            torch.save(checkpoint, save_path)
+            torch.save(checkpoint, model_path)
         else:
             epochs_no_improve += 1
 
         # Trigger early stopping    
-        if epochs_no_improve >= patience:
+        if epochs_no_improve >= PATIENCE:
             break
-
-if __name__ == "__main__":
-    main()

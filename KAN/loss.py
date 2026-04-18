@@ -28,7 +28,7 @@ class ZINBLoss(nn.Module):
         """
         eps = self.eps
         y_true = y_true.float()
-        y_pred = torch.exp(y_pred) * self.scale_factor  # Ensure mz > 0
+        y_pred = torch.exp(y_pred) * self.scale_factor  # Ensure mu > 0
         theta = torch.exp(theta)                        # Ensure theta > 0
         pi = torch.sigmoid(pi.float())                  # Ensure pi is in (0, 1)
 

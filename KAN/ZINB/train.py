@@ -1,22 +1,26 @@
 from efficient_kan import KAN
 import torch
+import argparse
+import os
 from dataset import get_dataloaders
-from model import build_kan
+from model import build_model
 from loss import ZINBLoss
 
-DATA_PATH = "~/BA/data/bifurcating/sim_1/"
+SIM = 1
+DATA_PATH = os.path.expanduser(f"~/BA/data/bifurcating/sim_{SIM}/")
+MODEL_PATH = os.path.expanduser("~/BA/KAN/ZINB/models/")
 BATCH_SIZE = 64
 EPOCHS = 2000
 TARGET_GENE = 12
-LR = 1e-2
-WEIGHT_DECAY = 1e-4
+LR = 5e-3
+WEIGHT_DECAY = 1e-5
 GRADIENT_CLIP_LIMIT = 5
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):
     # Set the model to training mode
     model.train()
     total_loss = 0.0
-    
+
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
 
@@ -28,7 +32,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         # - theta: Dispersion parameter (variance)
         # - pi: Dropout probability (zero-inflation)
         mu, theta, pi = model(X)
-        
+
         # Compute the ZINB negative log-likelihood
         loss = loss_fn(y, mu, theta, pi)
 
@@ -45,8 +49,8 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         total_loss += loss.item()
 
     # Calculate and return the average loss for this epoch
-    avg_loss = total_loss / len(dataloader)
-    return avg_loss
+    return total_loss / len(dataloader)
+
 
 def test_loop(dataloader, model, loss_fn, device):
     model.eval()
@@ -59,18 +63,31 @@ def test_loop(dataloader, model, loss_fn, device):
 
             mu, theta, pi = model(X)
             loss = loss_fn(y, mu, theta, pi)
-            total_test_loss += loss.item()
-    
-    avg_test_loss = total_test_loss / len(dataloader)
+            total_test_loss += loss.item() 
 
-    return avg_test_loss
+    return total_test_loss / len(dataloader)
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, choices=["effkan", "pykan", "mlp"], default="effkan")
+    parser.add_argument("--gene", type=int, default=None) # Choose None to fit all genes at the same time
+    args = parser.parse_args()
+
     # Load data
-    train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(DATA_PATH, batch_size=BATCH_SIZE)
+    train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(DATA_PATH, target_gene=args.gene, batch_size=BATCH_SIZE)
     
-    # Initialize the KAN model
-    model = build_kan(input_dim, output_dim)
+    # Initialize the model
+    model = build_model(args.model, input_dim, output_dim)
+    checkpoint = {
+        "input_dim": input_dim,
+        "output_dim": output_dim,
+        "model": args.model,
+        "gene": args.gene,
+        "state_dict": model.state_dict()
+    }
+
+    gene_str = f"gene{args.gene}" if args.gene is not None else "all"
+    save_path = f"{MODEL_PATH}{args.model}_sim{SIM}_{gene_str}.pth"
 
     #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = "cpu"
@@ -89,6 +106,7 @@ def main():
 
     # Training Loop
     for t in range(EPOCHS):
+        
         train_loss = train_loop(train_dataloader, model, loss_fn, optimizer, device)
         val_loss = test_loop(test_dataloader, model, loss_fn, device)
 
@@ -99,7 +117,8 @@ def main():
             best_val_loss = val_loss
             epochs_no_improve = 0
             # Only save the model when it actually improves
-            torch.save(model.state_dict(), "trained_kan_sim1.pth")
+            checkpoint["state_dict"] = model.state_dict()
+            torch.save(checkpoint, save_path)
         else:
             epochs_no_improve += 1
 

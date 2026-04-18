@@ -16,7 +16,7 @@ class SingleCellDataset(Dataset):
         return self.inputs[idx], self.targets[idx]
     
 
-def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
+def get_dataloaders(data_path, target_gene=None, batch_size=64, train_ratio=0.8):
     # Load the raw data
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
     pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
@@ -30,7 +30,12 @@ def get_dataloaders(data_path, batch_size=64, train_ratio=0.8):
 
     # Organize input (pseudotime, weights) and target values (gene counts)
     trajectories = np.hstack((pt_scaled, weights.values))
-    count_values = np.round(counts.values)
+
+    if target_gene is not None:
+        # Extract just the one column, but keep it a 2D array
+        count_values = np.round(counts.values[:, [target_gene]])
+    else:
+        count_values = np.round(counts.values)
     
     # Shuffle and split into training and validation
     n_cells = len(trajectories)

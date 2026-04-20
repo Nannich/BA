@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 from train import LR, WEIGHT_DECAY
 from utils import get_plotting_data, load_data, get_lineage_assignment
+from formulas import *
 from model import (
     build_model,
     MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS, PYKAN_GRID_SIZE, EFFKAN_GRID_SIZE, EFFKAN_SPLINE_ORDER, PYKAN_SPLINE_ORDER
@@ -74,7 +75,7 @@ def plot_smoothers(counts, pseudotime, weights, model, model_name, gene_idx, is_
         ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.6)
 
         # Plot the curve predicted by the model for the lineage
-        pt_grid, y_line = get_plotting_data(
+        pt_grid, pt_input_scaled, y_line = get_plotting_data(
             pseudotime, weights, model, gene_idx, target_lineage=l, is_single_gene=is_single_gene
         )
         
@@ -82,6 +83,11 @@ def plot_smoothers(counts, pseudotime, weights, model, model_name, gene_idx, is_
 
         # Plot the individual points            
         # ax.scatter(pt_grid, y_line, s=32, color=colors[l], label=f"Lineage {l+1}", marker="x")
+
+        # Plot a custom formula
+        y_formula_raw = pysr_pykan_sim1_gene12(pt_input_scaled[:, l], lineage=l)
+        y_formula = np.log1p(np.exp(y_formula_raw))                       
+        ax.plot(pt_grid, y_formula, linewidth=3, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", alpha=0.7)
     
     ax.set_title(f"Gene: {gene_idx}")
     ax.set_xlabel("Pseudotime")

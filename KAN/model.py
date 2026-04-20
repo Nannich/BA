@@ -14,7 +14,8 @@ PYKAN_GRID_SIZE = 2
 PYKAN_SPLINE_ORDER = 3
 
 # MLP
-MLP_HIDDEN_LAYERS = [320, 320, 320]
+# MLP_HIDDEN_LAYERS = [320, 320, 320]
+MLP_HIDDEN_LAYERS = [32]
 
 
 class ZINB_EFFKAN(nn.Module):
@@ -53,7 +54,6 @@ class ZINB_EFFKAN(nn.Module):
 
 
 class ZINB_PYKAN(nn.Module):
-
     def __init__(self, input_dim, output_dim):
         super().__init__()
 

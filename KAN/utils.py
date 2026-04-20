@@ -101,4 +101,4 @@ def get_plotting_data(pseudotime, weights, model, gene_idx, target_lineage, n_po
     y_line = np.exp(y_line)                         
     y_line = np.log1p(y_line)
 
-    return pt_grid, y_line
+    return pt_grid, pt_input_scaled, y_line

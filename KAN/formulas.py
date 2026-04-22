@@ -34,15 +34,31 @@ def exponential_sim1_gene12(x, lineage, s=0.37):
         lin2_val = 12.6 - 5.4 * np.exp(0.6 * s)
         return np.where(x < s, trunk_val, lin2_val)
     
+def sigmoid_sim1_gene12(x, lineage, s=0.37):
+    trunk_val = 8.8 * sigmoid(5.2 * sigmoid(1.7 - 2.0 * x) + 1.0 * sigmoid(8.4 * x - 1.7) - 3.5) - 0.4
+    lin1_val  = 8.8 * sigmoid(5.2 * sigmoid(1.7 - 2.0 * x) + 1.0 * sigmoid(8.4 * s - 1.7) - 3.5) - 0.4
+    lin2_val  = 8.8 * sigmoid(5.2 * sigmoid(1.7 - 2.0 * s) + 1.0 * sigmoid(8.4 * x - 1.7) - 3.5) - 0.4
+    
+    if lineage == 0:
+        return np.where(x < s, trunk_val, lin1_val)
+    else:
+        return np.where(x < s, trunk_val, lin2_val)
+
 
 def pysr_pykan_sim1_gene12(x, lineage):
-    if lineage == 0:  
+    if lineage == 0:
         return 9.3604 - 7.212 * x - 7.212 * sigmoid(-6.2211 * x)
     else:
         return 5.6076 + sigmoid(4.0908 * x - 1.3232)
 
 
-def pysr_mlp_sim1_gene12(x, lineage):
+def pysr_mlp_all_sim1_gene12(x, lineage):
+    if lineage == 0:  
+        return np.exp(-3.1123 * (x**2) + 1.3772 * x + 1.284) + 2.0569   
+    else:             
+        return -3.163 * (x**3) + 3.7008 * (x**2) + 5.8862
+    
+def pysr_mlp_single_sim1_gene12(x, lineage):
     if lineage == 0:  
         return np.exp(-3.1123 * (x**2) + 1.3772 * x + 1.284) + 2.0569   
     else:             

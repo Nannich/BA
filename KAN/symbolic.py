@@ -8,6 +8,20 @@ from model import build_model
 from visualize import load_data, get_plotting_data
 from kan.utils import SYMBOLIC_LIB
 
+def torch_sigmoid(x):
+    return 1 / (1 + torch.exp(-x))
+
+# Prevent sigmoid from being simplified/expanded
+class sigmoid(sympy.Function):
+    nargs = 1
+    @classmethod
+    def eval(cls, x):
+        return None
+
+def sympy_sigmoid(x):
+    return sigmoid(x)
+
+SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 1, lambda x, y: (x, y))
 
 def symbolic_pykan(model, gene, counts, pseudotime, weights, sim, fig_path):
     pt_values = pseudotime.values
@@ -50,11 +64,13 @@ def symbolic_pykan(model, gene, counts, pseudotime, weights, sim, fig_path):
 
     # Run symbolic regression to replace splines with math functions
     custom_lib = [
-        'x', #'x^2', 'x^3', 'x^4', 'x^5', 
+        'x', 'x^2', 'x^3', 'x^4', 'x^5', 
         '1/x', '1/x^2', '1/x^3', '1/x^4', '1/x^5', 
         'sqrt', 'x^0.5', 'x^1.5', '1/sqrt(x)', '1/x^0.5', 
         'exp', 'log', 'abs', '0', 'gaussian', 'sgn',
-        #'sin', 'cos', 'tan', 'tanh', 'arcsin', 'arccos', 'arctan', 'arctanh'
+        'sigmoid',
+        #'sin', 'cos', 
+        'tan', 'tanh', 'arcsin', 'arccos', 'arctan', 'arctanh'
     ]
 
     model.kan.auto_symbolic(lib=custom_lib, weight_simple=0.8)
@@ -147,5 +163,5 @@ def run_extraction(args):
 
     model.eval()
 
-    #symbolic_pykan(model, model_gene, counts, pseudotime, weights, sim, fig_path)
-    symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene)
+    symbolic_pykan(model, model_gene, counts, pseudotime, weights, sim, fig_path)
+    #symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene)

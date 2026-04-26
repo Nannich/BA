@@ -2,7 +2,7 @@
 
 library(tradeSeq)
 
-path <- "~/BA/data/paul/"
+path <- "~/BA/data/paul/sim_1/"
 
 if (!dir.exists(path)) dir.create(path, recursive = TRUE)
 

@@ -3,22 +3,9 @@ library(slingshot)
 
 path_base <- "~/BA/data/"
 
-FQnorm <- function(counts) {
-  rk <- apply(counts, 2, rank, ties.method = 'min')
-  counts.sort <- apply(counts, 2, sort)
-  refdist <- apply(counts.sort, 1, median)
-  norm <- apply(rk, 2, function(r) { refdist[r] })
-  rownames(norm) <- rownames(counts)
-  return(norm)
-}
-
 extract_furcating <- function(data, crv) {
   counts <-  data$counts
-  
-  # Normalize counts
-  counts <- t(as.matrix(counts))
-  counts <- FQnorm(counts)
-  counts <- t(counts) # Output: Cells x Genes
+  counts <- as.matrix(counts)
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)
   weights     <- slingCurveWeights(crv)
@@ -29,11 +16,7 @@ extract_furcating <- function(data, crv) {
 
 extract_cyclic <- function(data, crv) {
   counts <-  data$counts
-  
-  # Normalize counts
-  counts <- t(as.matrix(counts))
-  counts <- FQnorm(counts)
-  counts <- t(counts) # Output: Cells x Genes
+  counts <- as.matrix(counts)
   
   pseudotime  <- crv$lambda
   weights     <- rep(1, length(pseudotime)) # Because it has only 1 lineage
@@ -50,9 +33,7 @@ extract_paul <- function(data, crv) {
   counts <- data
   
   # Normalize counts
-  counts <- t(as.matrix(counts))
-  counts <- FQnorm(counts)
-  counts <- t(counts) # Output: Cells x Genes
+  counts <- t(as.matrix(counts)) # Output: Cells x Genes
   
   pseudotime  <- slingPseudotime(crv, na = FALSE)
   weights     <- slingCurveWeights(crv)
@@ -69,7 +50,7 @@ extract_paul <- function(data, crv) {
 process_dataset <- function(category, iter = NULL) {
   # Paul dataset does not have multiple simulations
   if (is.null(iter)) {
-    sim_dir <- paste0(path_base, category, "/")
+    sim_dir <- paste0(path_base, category, "/sim_", 1, "/")
   } else {
     sim_dir <- paste0(path_base, category, "/sim_", iter, "/")
   }

@@ -5,7 +5,7 @@ from kan.utils import ex_round
 import numpy as np
 import matplotlib.pyplot as plt
 from model import build_model
-from visualize import load_data, get_plotting_data
+from utils import load_data, predict_lineage_curve
 from kan.utils import SYMBOLIC_LIB
 
 def torch_sigmoid(x):
@@ -23,16 +23,15 @@ def sympy_sigmoid(x):
 
 SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 1, lambda x, y: (x, y))
 
-def symbolic_pykan(model, gene, counts, pseudotime, weights, sim, fig_path):
+def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
     pt_values = pseudotime.values
-    pt_min = pt_values.min(axis=0, keepdims=True)
-    pt_max = pt_values.max(axis=0, keepdims=True)
     pt_scaled = (pt_values - pt_min) / (pt_max - pt_min + 1e-8)
 
     trajectories = np.hstack((pt_scaled, weights.values))
     
     # Populate model
-    X_sample = torch.tensor(trajectories[:100], dtype=torch.float32)
+    model.eval()
+    X_sample = torch.tensor(trajectories, dtype=torch.float32)
     
     with torch.no_grad():
         model(X_sample)
@@ -92,17 +91,17 @@ def symbolic_pykan(model, gene, counts, pseudotime, weights, sim, fig_path):
 
     
 
-def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene):
+def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, pt_max):
     from pysr import PySRRegressor
     
-    lineage = 1
+    lineage = 0
 
-    gene_idx = 0 if model_gene is not None else gene
+    is_single_gene = False if model_gene is None else True
 
     model.eval()
    
-    pt_input, pt_input_scaled, y_pred = get_plotting_data(
-        pseudotime, weights, model, gene_idx, lineage
+    pt_input, pt_input_scaled, y_pred = predict_lineage_curve(
+        pseudotime, weights, model, gene, lineage, is_single_gene, pt_min, pt_max
     )
 
 
@@ -153,15 +152,17 @@ def run_extraction(args):
     input_dim = checkpoint["input_dim"]
     output_dim = checkpoint["output_dim"]
     model_gene = checkpoint["gene"]
+    pt_min = checkpoint["pt_min"]
+    pt_max = checkpoint["pt_max"]
 
     fig_path = os.path.join(fig_dir, "symbolic", dataset, f"sim{sim}_gene{gene}.png")
 
-    counts, pseudotime, weights = load_data(data_path)
+    counts, pseudotime, weights, tde = load_data(data_path)
     
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
 
     model.eval()
 
-    symbolic_pykan(model, model_gene, counts, pseudotime, weights, sim, fig_path)
+    symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max)
     #symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene)

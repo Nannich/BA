@@ -1,8 +1,11 @@
 import torch
 import os
-from dataset import get_dataloaders
+from dataset import get_dataloaders, get_eval_dataloader
+from de import calculate_mse_per_curve, calculate_nll_per_gene, calculate_aic, calculate_bic
 from model import build_model
 from loss import ZINBLoss
+
+from model import MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS
 
 
 BATCH_SIZE = 64
@@ -29,6 +32,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, device):
         # - mu: Predicted true biological mean expression
         # - theta: Dispersion parameter (variance)
         # - pi: Dropout probability (zero-inflation)
+
         mu, theta, pi = model(X)
 
         # Compute the ZINB negative log-likelihood
@@ -77,7 +81,7 @@ def run_training(args):
     data_path = os.path.join(data_dir, dataset, f"sim_{sim}/")
 
     # Load data
-    train_dataloader, test_dataloader, input_dim, output_dim = get_dataloaders(data_path, target_gene, BATCH_SIZE)
+    train_dataloader, test_dataloader, input_dim, output_dim, pt_min, pt_max = get_dataloaders(data_path, target_gene, BATCH_SIZE)
     
     # Initialize the model
     model = build_model(model_type, input_dim, output_dim)
@@ -86,7 +90,14 @@ def run_training(args):
         "output_dim": output_dim,
         "model": model_type,
         "gene": target_gene,
-        "state_dict": model.state_dict()
+        "state_dict": model.state_dict(),
+        "pt_min": pt_min,
+        "pt_max": pt_max,
+        "hidden_layers": MLP_HIDDEN_LAYERS if model_type == "mlp" else (
+                         EFFKAN_HIDDEN_LAYERS if model_type == "effkan" else PYKAN_HIDDEN_LAYERS),
+        "wd": WEIGHT_DECAY,
+        "lr": LR,
+        "mse": 0
     }
 
     gene_str = f"gene{target_gene}" if target_gene is not None else "all"
@@ -128,3 +139,30 @@ def run_training(args):
         # Trigger early stopping    
         if epochs_no_improve >= PATIENCE:
             break
+
+    # Add MSE to checkpoint
+    model.load_state_dict(checkpoint["state_dict"])
+    full_dataloader = get_eval_dataloader(data_path, pt_min, pt_max, target_gene, batch_size=256)
+    mse_per_curve = calculate_mse_per_curve(full_dataloader, model, device)
+    checkpoint["mse"] = mse_per_curve.cpu()
+
+    # Add AIC and BIC to checkpoint
+    unreduced_loss_fn = ZINBLoss(reduction='none') 
+
+    # Negative Log-Likelihood for each gene
+    total_nll_tensor = calculate_nll_per_gene(full_dataloader, model, unreduced_loss_fn, device)
+    
+    # Number of parameters: k
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    # Distribute k across the number of genes
+    n_genes = total_nll_tensor.shape[0]
+    k_per_gene = n_params / n_genes
+
+    # Number of cells: n
+    n_samples = len(full_dataloader.dataset)
+
+    checkpoint["aic"] = calculate_aic(k_per_gene, total_nll_tensor).cpu()
+    checkpoint["bic"] = calculate_bic(k_per_gene, total_nll_tensor, n_samples).cpu()
+    
+    torch.save(checkpoint, model_path)

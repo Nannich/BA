@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from efficient_kan import KAN
 
 
@@ -9,7 +10,8 @@ def load_data(data_path):
     counts = pd.read_csv(os.path.join(data_path, "counts.csv"), index_col=0)
     pseudotime = pd.read_csv(os.path.join(data_path, "pseudotime.csv"), index_col=0)
     weights = pd.read_csv(os.path.join(data_path, "weights.csv"), index_col=0)
-    return counts, pseudotime, weights
+    tde = pd.read_csv(os.path.join(data_path, "tde.csv"), index_col=0)
+    return counts, pseudotime, weights, tde
 
 
 def get_lineage_assignment(weights):
@@ -21,8 +23,10 @@ def get_lineage_assignment(weights):
 
     return lineage_assignment
 
+def scale_pt(pt, pt_min, pt_max):
+    return (pt - pt_min) / (pt_max - pt_min + 1e-8)
 
-def get_plotting_data(pseudotime, weights, model, gene_idx, target_lineage, n_points=200, is_single_gene=False):
+def predict_lineage_curve_smooth(pseudotime, weights, model, gene_idx, target_lineage, n_points=200, is_single_gene=False):
     # Returns the prediction curve of the model and the corresponding input matric for the target lineage 
 
     n_lineages = weights.shape[1]
@@ -91,10 +95,15 @@ def get_plotting_data(pseudotime, weights, model, gene_idx, target_lineage, n_po
     model.eval()
     with torch.no_grad():
         mu, theta, pi = model(X_tensor)
- 
+
     if is_single_gene:
-        y_line = mu[:, 0].numpy()
-    else: 
+        # Model only outputs 1 column, return index 0
+        y_line = mu[:, 0].detach().cpu().numpy()
+    elif gene_idx is None:
+        # Return the predictions for all genes at once
+        y_line = mu.numpy()
+    else:
+        # Return the specific column for the requested gene
         y_line = mu[:, gene_idx].numpy()
     
     # Because of the exp link function the model predicts the log count
@@ -102,3 +111,43 @@ def get_plotting_data(pseudotime, weights, model, gene_idx, target_lineage, n_po
     y_line = np.log1p(y_line)
 
     return pt_grid, pt_input_scaled, y_line
+
+
+def predict_lineage_curve(pseudotime, weights, model, gene_idx, target_lineage, is_single_gene, pt_min, pt_max):
+    lineage_assignment = get_lineage_assignment(weights)
+
+    pt_values = pseudotime.values
+
+    mask = lineage_assignment[:, target_lineage]
+    pt_active = pt_values[mask]
+    weights_active = weights.values[mask]
+
+    # Extract 1D column for sorting
+    pt_active_col = pt_active[:, target_lineage]
+    sort_idx = np.argsort(pt_active_col)
+    
+    # Apply sort to 2D matrices for the model
+    pt_sorted = pt_active[sort_idx]
+    weights_sorted = weights_active[sort_idx]
+    
+    # Apply sort to the 1D column for matplotlib's X-axis
+    pt_active_sorted = pt_active_col[sort_idx] 
+
+    # Scale and prepare inputs
+    pt_input_scaled = scale_pt(pt_sorted, pt_min, pt_max)
+    input_matrix = np.hstack((pt_input_scaled, weights_sorted))
+    X_tensor = torch.tensor(input_matrix, dtype=torch.float32)
+
+    model.eval()
+    with torch.no_grad():
+        mu, theta, pi = model(X_tensor)
+ 
+    if is_single_gene:
+        y_line = mu[:, 0].detach().cpu().numpy()
+    else:
+        y_line = mu.detach().cpu().numpy() if gene_idx is None else mu[:, gene_idx].detach().cpu().numpy()
+    
+    y_line = np.exp(y_line)                         
+    y_line = np.log1p(y_line)
+
+    return pt_active_sorted, pt_input_scaled, y_line

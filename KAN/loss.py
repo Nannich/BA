@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 class ZINBLoss(nn.Module):
-    def __init__(self, scale_factor=1.0, eps=1e-10, ridge_lambda=0.0):
+    def __init__(self, scale_factor=1.0, eps=1e-10, ridge_lambda=0.0, reduction='mean'):
         """
         Zero-Inflated Negative Binomial (ZINB) Loss
         Args:
@@ -14,6 +14,7 @@ class ZINBLoss(nn.Module):
         self.scale_factor = scale_factor
         self.eps = eps
         self.ridge_lambda = ridge_lambda
+        self.reduction = reduction
 
     def forward(self, y_true, y_pred, theta, pi):
         """
@@ -56,4 +57,9 @@ class ZINBLoss(nn.Module):
         ridge = self.ridge_lambda * torch.square(pi)
         result += ridge
 
-        return torch.mean(result)  # Return mean loss over the batch
+        if self.reduction == 'mean':
+            return torch.mean(result)
+        elif self.reduction == 'sum':
+            return torch.sum(result)
+        elif self.reduction == 'none':
+            return result

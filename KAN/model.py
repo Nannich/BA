@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from kan import KAN as PyKAN
 from efficient_kan import KAN as EffKAN
@@ -15,7 +16,7 @@ PYKAN_SPLINE_ORDER = 3
 
 # MLP
 # MLP_HIDDEN_LAYERS = [320, 320, 320]
-MLP_HIDDEN_LAYERS = [32]
+MLP_HIDDEN_LAYERS = [64, 64, 64]
 
 
 class ZINB_EFFKAN(nn.Module):
@@ -35,7 +36,7 @@ class ZINB_EFFKAN(nn.Module):
             spline_order=EFFKAN_SPLINE_ORDER,
             # Both lineage weights and pseudtime are scaled to [0, 1]
             # Small buffer dampens the line curving up at the end
-            grid_range=[-1.2, 1.2],
+            grid_range=[-1, 2],
         )
 
     def forward(self, x, update_grid=False):
@@ -62,7 +63,7 @@ class ZINB_PYKAN(nn.Module):
             width=width,
             grid=PYKAN_GRID_SIZE,
             k=PYKAN_SPLINE_ORDER,
-            grid_range=[-1.2, 1.2],
+            grid_range=[-1, 2],
             device="cpu"  
         )
 
@@ -103,11 +104,30 @@ class ZINB_MLP(nn.Module):
         pi =    raw_output[:, n_genes * 2:]
 
         return mu, theta, pi
+    
+
+class NullModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.mu_bias = nn.Parameter(torch.tensor(0.0))
+        self.theta_bias = nn.Parameter(torch.tensor(0.0))
+        self.pi_bias = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        mu = self.mu_bias.expand(batch_size, 1)
+        theta = self.theta_bias.expand(batch_size, 1)
+        pi = self.pi_bias.expand(batch_size, 1)
+        return mu, theta, pi
+
 
 def build_model(model_type, input_dim, output_dim):
     if model_type == "effkan":
         return ZINB_EFFKAN(input_dim, output_dim)
     elif model_type == "pykan":
         return ZINB_PYKAN(input_dim, output_dim)
-    else:
+    elif model_type == "mlp":
         return ZINB_MLP(input_dim, output_dim)
+    else:
+        return NullModel()

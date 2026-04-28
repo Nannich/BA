@@ -2,107 +2,125 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from train import LR, WEIGHT_DECAY
-from utils import get_plotting_data, load_data, get_lineage_assignment
+from utils import *
 from formulas import *
-from model import (
-    build_model,
-    MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS, PYKAN_GRID_SIZE, EFFKAN_GRID_SIZE, EFFKAN_SPLINE_ORDER, PYKAN_SPLINE_ORDER
-)
+from dataset import *
+from model import build_model
 
 
-def plot_parameters(ax, model, model_name, is_single_gene):
+def plot_parameters(ax, model, checkpoint, gene_to_plot):
     # Plot a textbox with the hyperparamters
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    if model_name == "effkan":
-        hyperparams_text = (
-            "efficient-kan\n"
-            f"Layers: {EFFKAN_HIDDEN_LAYERS}\n"
-            f"Parameters: {total_params}\n"
-            f"Grid Size: {EFFKAN_GRID_SIZE}\n"
-            f"Spline Order: {EFFKAN_SPLINE_ORDER}\n"
-            f"LR: {LR} | WD: {WEIGHT_DECAY}" 
-        )
-    elif model_name == "pykan":
-        hyperparams_text = (
-            "pyKAN\n"
-            f"Layers: {PYKAN_HIDDEN_LAYERS}\n"
-            f"Parameters: {total_params}\n"
-            f"Grid Size: {PYKAN_GRID_SIZE}\n"
-            f"Spline Order: {PYKAN_SPLINE_ORDER}\n"
-            f"LR: {LR} | WD: {WEIGHT_DECAY}" 
-        )
-    elif model_name == "mlp":
-        activation_name = model.mlp[1].__class__.__name__
-        hyperparams_text = (
-            "MLP\n"
-            f"Layers: {MLP_HIDDEN_LAYERS}\n"
-            f"Parameters: {total_params}\n"
-            f"Activation: {activation_name}\n"
-            f"LR: {LR} | WD: {WEIGHT_DECAY}" 
-        )
+    model_type = checkpoint["model"]
+    hidden_layers = checkpoint["hidden_layers"]
+    lr = checkpoint["lr"]
+    wd = checkpoint["wd"]
+    gene = checkpoint["gene"]
+    mse = checkpoint["mse"]
+    aic = checkpoint["aic"]
+    bic =  checkpoint["bic"]
+    model_gene = checkpoint["gene"]
     
-    if is_single_gene: 
-        hyperparams_text = f"{hyperparams_text}\nSingle Gene"
-    else:
-        hyperparams_text = f"{hyperparams_text}\nAll Genes"
+    is_single_gene = model_gene is not None
+    gene_idx = 0 if is_single_gene else gene_to_plot
 
-    # Place the text box in the bottom left corner of the plot
-    ax.text(0.05, 0.1, hyperparams_text, transform=ax.transAxes, 
-            fontsize=9, verticalalignment='bottom', horizontalalignment='left',
+    mse_list = [f"L{l+1}: {mse[gene_idx, l].item():.3f}" for l in range(mse.shape[1])]
+    mse_val = " | ".join(mse_list)
+    aic_val = aic[gene_idx].item()
+    bic_val = bic[gene_idx].item()
+
+    text = (
+        f"Model: {model_type}\n"
+        f"Hidden layers: {hidden_layers}\n"
+        f"Parameters: {total_params}\n"
+        f"LR: {lr} | WD: {wd}\n"
+        f"MSE: {mse_val}\n"
+        f"AIC: {aic_val:.0f} | BIC: {bic_val:.0f}"
+    )
+
+    if gene is None:
+        text = f"{text}\nAll Genes"
+    else:
+        text = f"{text}\nSingle Gene"
+
+    text_box = ax.text(1.02, 0.5, text, transform=ax.transAxes, 
+            fontsize=9, verticalalignment='center', horizontalalignment='left',
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
+    return text_box
 
-def plot_smoothers(counts, pseudotime, weights, model, model_name, gene_idx, is_single_gene, fig_path):
+def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors):
     # Evaluates the model along each lineage and plots the predicted gene expression count
     # against the data from the data set used during training
     model.eval()
+
+    gene = checkpoint["gene"]
+    pt_min = checkpoint["pt_min"]
+    pt_max = checkpoint["pt_max"]
+
+    is_single_gene = gene is not None
     
     n_lineages = weights.shape[1]
-    lineage_assignment = get_lineage_assignment(weights)
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
 
     for l in range(n_lineages):
-        mask = lineage_assignment[:, l]
-
-        # Extract pt and counts of cells assigned to this lineage for the plot
-        # Each cell is one point where x is pseudotime and y is count
-        pt_active = pseudotime.values[mask, l]
-        log_count_active = np.log1p(counts.values[mask, gene_idx])
-        ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.6)
 
         # Plot the curve predicted by the model for the lineage
-        pt_grid, pt_input_scaled, y_line = get_plotting_data(
-            pseudotime, weights, model, gene_idx, target_lineage=l, is_single_gene=is_single_gene
+        pt_grid, pt_input_scaled, y = predict_lineage_curve(
+            pseudotime, weights, model, gene_to_plot, l, is_single_gene, pt_min, pt_max
         )
         
-        ax.plot(pt_grid, y_line, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
+        ax.plot(pt_grid, y, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
+        
 
-        # Plot the individual points            
-        # ax.scatter(pt_grid, y_line, s=32, color=colors[l], label=f"Lineage {l+1}", marker="x")
+def plot_custom(ax, pseudotime, checkpoint, colors):
+    pt_min = checkpoint["pt_min"]
+    pt_max = checkpoint["pt_max"]
 
-        # Plot a custom formula
-        y_formula_raw = pysr_pykan_sim1_gene12(pt_input_scaled[:, l], lineage=l)
+    n_lineages = pseudotime.shape[1]
+    for l in range(n_lineages):
+        pt_input_scaled = scale_pt(pseudotime.values, pt_min, pt_max)
+        y_formula_raw = sigmoid_sim1_gene12(pt_input_scaled[:, l], lineage=l)
         y_formula = np.log1p(np.exp(y_formula_raw))                       
-        ax.plot(pt_grid, y_formula, linewidth=3, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", alpha=0.7)
+        ax.plot(pseudotime, y_formula, linewidth=3, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", alpha=0.7)
+
+
+def plot_scatter_data(ax, counts, pseudotime, weights, gene_to_plot, colors):
+    lineage_assignment = get_lineage_assignment(weights)
+    n_lineages = lineage_assignment.shape[1]
+    for l in range(n_lineages):
+        mask = lineage_assignment[:, l]
+        pt_active = pseudotime.values[mask, l]
+        log_count_active = np.log1p(counts.values[mask, gene_to_plot])
+        ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.6)
+
+
+def plot_everything(counts, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path):
+    model.eval()
+
+    n_lineages = weights.shape[1]
     
-    ax.set_title(f"Gene: {gene_idx}")
+    colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    text_box = plot_parameters(ax, model, checkpoint, gene_to_plot,)
+    plot_scatter_data(ax, counts, pseudotime, weights, gene_to_plot, colors)
+    plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors)
+    #plot_custom(ax, pseudotime, checkpoint, colors)
+
+    ax.set_title(f"Gene: {gene_to_plot}")
     ax.set_xlabel("Pseudotime")
     ax.set_ylabel("Log(expression + 1)")
     ax.legend(title="Lineage")
 
-    plot_parameters(ax, model, model_name, is_single_gene)
+    fig.subplots_adjust(left=0.05, bottom=0.08, top=0.92, right=0.8)
 
-    plt.savefig(fig_path, bbox_inches="tight", dpi=300)
+    plt.savefig(fig_path, bbox_inches="tight", bbox_extra_artists=(text_box,), dpi=300)
     plt.show()
 
 
 def run_visualization(args):
-    gene = args.gene
-    data_dir = args.data_dir
+    gene_to_plot = args.gene
     model_dir = args.model_dir
     fig_dir = args.fig_dir
     model_name = args.name
@@ -112,20 +130,17 @@ def run_visualization(args):
     model_path = os.path.join(model_dir, dataset, model_name)
     data_path = os.path.join(args.data_dir, dataset, f"sim_{sim}/")
 
-    counts, pseudotime, weights = load_data(data_path)
+    counts, pseudotime, weights, tde = load_data(data_path)
 
     checkpoint = torch.load(model_path, weights_only=False)
     
-    model_type = checkpoint ["model"]
+    model_type = checkpoint["model"]
     input_dim = checkpoint["input_dim"]
     output_dim = checkpoint["output_dim"]
-    model_gene = checkpoint["gene"]
 
-    fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_sim{sim}_gene{gene}.png")
-
-    is_single_gene = model_gene is not None
+    fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_sim{sim}_gene{gene_to_plot}.png")
     
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
 
-    plot_smoothers(counts, pseudotime, weights, model, model_type, gene, is_single_gene, fig_path)
+    plot_everything(counts, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path)

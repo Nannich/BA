@@ -62,14 +62,14 @@ def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors
     
     n_lineages = weights.shape[1]
 
-    for l in range(n_lineages):
+    predictions_raw = predict_lineage_trajectories(pseudotime, weights, model, gene_to_plot, is_single_gene, pt_min, pt_max)
 
-        # Plot the curve predicted by the model for the lineage
-        pt_grid, pt_input_scaled, y = predict_lineage_curve(
-            pseudotime, weights, model, gene_to_plot, l, is_single_gene, pt_min, pt_max
-        )
-        
-        ax.plot(pt_grid, y, linewidth=3, color=colors[l], label=f"Lineage {l+1}")
+    for l in range(n_lineages):
+        x_raw, _, y_raw = predictions_raw[l]
+        x_smooth, y_smooth = smoothen_lineage_trajectory(y_raw, x_raw)
+
+        ax.plot(x_raw, y_raw, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
+        ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=1)
         
 
 def plot_custom(ax, pseudotime, checkpoint, colors):

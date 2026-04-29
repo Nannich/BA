@@ -5,7 +5,7 @@ from kan.utils import ex_round
 import numpy as np
 import matplotlib.pyplot as plt
 from model import build_model
-from utils import load_data, predict_lineage_curve
+from utils import *
 from kan.utils import SYMBOLIC_LIB
 
 def torch_sigmoid(x):
@@ -100,9 +100,8 @@ def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, 
 
     model.eval()
    
-    pt_input, pt_input_scaled, y_pred = predict_lineage_curve(
-        pseudotime, weights, model, gene, lineage, is_single_gene, pt_min, pt_max
-    )
+    predictions = predict_lineage_trajectories(pseudotime, weights, model, gene, is_single_gene, pt_min, pt_max)
+    pt_active_sorted, pt_input_scaled, y_pred = predictions[lineage]
 
 
     X_pysr = pt_input_scaled[:, lineage].reshape(-1, 1) # Format for PySR

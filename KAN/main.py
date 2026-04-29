@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--sim", type=int, default=1)
-    parser.add_argument("--dataset", type=str, default="paul")
+    parser.add_argument("--dataset", type=str, default="bifurcating")
     parser.add_argument("--data_dir", type=str, default="~/BA/data/")
     parser.add_argument("--model_dir", type=str, default="~/BA/models/")
     parser.add_argument("--fig_dir", type=str, default="~/BA/figs/")

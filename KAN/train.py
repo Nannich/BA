@@ -14,7 +14,7 @@ TARGET_GENE = 12
 LR = 5e-3
 WEIGHT_DECAY = 1e-5
 GRADIENT_CLIP_LIMIT = 5
-PATIENCE = 16
+PATIENCE = 4
 
 
 def train_loop(dataloader, model, loss_fn, optimizer, device):

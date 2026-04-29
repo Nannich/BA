@@ -5,8 +5,8 @@ from efficient_kan import KAN as EffKAN
 
 # Hyperparamters
 # Efficient-KAN
-EFFKAN_HIDDEN_LAYERS = [32]
-EFFKAN_GRID_SIZE = 5
+EFFKAN_HIDDEN_LAYERS = [20]
+EFFKAN_GRID_SIZE = 3
 EFFKAN_SPLINE_ORDER = 3
 
 # PyKAN
@@ -107,18 +107,21 @@ class ZINB_MLP(nn.Module):
     
 
 class NullModel(nn.Module):
-    def __init__(self):
+    def __init__(self, output_dim):
         super().__init__()
 
-        self.mu_bias = nn.Parameter(torch.tensor(0.0))
-        self.theta_bias = nn.Parameter(torch.tensor(0.0))
-        self.pi_bias = nn.Parameter(torch.tensor(0.0))
+        n_genes = output_dim // 3
+
+        self.mu_bias = nn.Parameter(torch.zeros(1, n_genes))
+        self.theta_bias = nn.Parameter(torch.zeros(1, n_genes))
+        self.pi_bias = nn.Parameter(torch.zeros(1, n_genes))
+
 
     def forward(self, x):
         batch_size = x.shape[0]
-        mu = self.mu_bias.expand(batch_size, 1)
-        theta = self.theta_bias.expand(batch_size, 1)
-        pi = self.pi_bias.expand(batch_size, 1)
+        mu = self.mu_bias.expand(batch_size, -1)
+        theta = self.theta_bias.expand(batch_size, -1)
+        pi = self.pi_bias.expand(batch_size, -1)
         return mu, theta, pi
 
 
@@ -130,4 +133,4 @@ def build_model(model_type, input_dim, output_dim):
     elif model_type == "mlp":
         return ZINB_MLP(input_dim, output_dim)
     else:
-        return NullModel()
+        return NullModel(output_dim)

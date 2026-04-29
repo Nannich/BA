@@ -2,27 +2,35 @@ import numpy as np
 import os
 import torch
 import torch.nn.functional as F
-from utils import load_data, predict_lineage_curve
+from utils import *
 from model import build_model
 
-def association_test_all(model, pseudotime, weights, model_gene, threshold, pt_min, pt_max):
-    is_de_l1 = association_test(model, pseudotime, weights, model_gene, 0, threshold, pt_min, pt_max)
-    is_de_l2 = association_test(model, pseudotime, weights, model_gene, 1, threshold, pt_min, pt_max)
-    return is_de_l1 | is_de_l2
+def information_criteria_test(model_checkpoint, null_checkpoint, threshold=2.0):
+    # Extract the pre-calculated AIC metrics
+    model_aic = model_checkpoint["aic"].numpy()
+    null_aic = null_checkpoint["aic"].numpy()
 
-def association_test(model, pseudotime, weights, model_gene, lineage, threshold, pt_min, pt_max):
+    delta_aic = null_aic - model_aic
     
-    is_single_gene = model_gene is not None
-
-    pt_input, pt_input_scaled, y_pred = predict_lineage_curve(
-        pseudotime, weights, model, None, lineage, is_single_gene, pt_min, pt_max
-    )
-
-    differences = np.max(y_pred, axis=0) - np.min(y_pred, axis=0)
-    
-    is_de = differences > threshold
+    is_de = delta_aic > threshold
 
     return is_de
+
+def association_test(model, pseudotime, weights, model_gene, threshold, pt_min, pt_max):
+    n_lineages = pseudotime.shape[1]
+    is_single_gene = model_gene is not None
+    
+    de_across_lineages = []
+    
+    predictions = predict_lineage_trajectories(pseudotime, weights, model, None, is_single_gene, pt_min, pt_max)
+    
+
+    for lineage in range(n_lineages):
+        pt_active_sorted, pt_input_scaled, y_pred = predictions[lineage]
+        differences = np.max(y_pred, axis=0) - np.min(y_pred, axis=0)
+        de_across_lineages.append(differences > threshold)
+        
+    return np.any(de_across_lineages, axis=0)
 
 def evaluate(pred_de, true_de):
     n_true_de = np.sum(true_de)
@@ -115,8 +123,12 @@ def run_de(args):
 
     data_path = os.path.join(data_dir, dataset, f"sim_{sim}")
     model_path = os.path.join(model_dir, dataset, model_name)
-    
     checkpoint = torch.load(model_path, weights_only=False)
+
+    null_name = f"null_sim{sim}_all.pth"
+    null_path = os.path.join(model_dir, dataset, null_name)
+    null_checkpoint = torch.load(null_path, weights_only=False)
+    
     model_type = checkpoint ["model"]
     input_dim = checkpoint["input_dim"]
     output_dim = checkpoint["output_dim"]
@@ -124,20 +136,23 @@ def run_de(args):
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
-    counts, pseudotime, weights, tde = load_data(data_path)    
+    counts, pseudotime, weights, tde = load_data(data_path)
+    true_de = tde.values.flatten()    
 
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
 
     model.eval()
 
-    for i in range(0, 21):
-        threshold = i * 0.05
-        #pred_de = association_test(model, counts, pseudotime, weights, model_gene, lineage, threshold)
-        pred_de = association_test_all(model, counts, pseudotime, weights, model_gene, threshold, pt_min, pt_max)
-    
-        true_de = tde.values.flatten()
 
-        trp, fdr = evaluate(pred_de, true_de)
+    threshold = 0.8 
+    pred_de = association_test(model, pseudotime, weights, model_gene, threshold, pt_min, pt_max)
+    trp, fdr = evaluate(pred_de, true_de)
+    print(f"TPR: {trp:.2f} | FDR: {fdr:.2f} | Delta AIC Threshold: {threshold:.2f} | Test: Association")
 
-        print(f"TPR: {trp:.2f} | FDR: {fdr:.2f} | Threshold: {threshold:.2f}")
+
+    threshold = 2 
+    pred_de = information_criteria_test(checkpoint, null_checkpoint, threshold)
+    trp, fdr = evaluate(pred_de, true_de)
+
+    print(f"TPR: {trp:.2f} | FDR: {fdr:.2f} | Delta AIC Threshold: {threshold:.2f} | Test: AIC ")

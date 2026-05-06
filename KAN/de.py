@@ -32,6 +32,7 @@ def association_test(model, pseudotime, weights, model_gene, threshold, pt_min, 
         
     return np.any(de_across_lineages, axis=0)
 
+
 def evaluate(pred_de, true_de):
     n_true_de = np.sum(true_de)
     n_pred_de = np.sum(pred_de)
@@ -43,6 +44,7 @@ def evaluate(pred_de, true_de):
     fdr = fd_counts / n_pred_de
 
     return tpr, fdr
+
 
 def calculate_mse_per_curve(dataloader, model, device="cpu"):
     model.eval()
@@ -85,6 +87,7 @@ def calculate_mse_per_curve(dataloader, model, device="cpu"):
 
     return mse_per_curve
 
+
 def calculate_nll_per_gene(dataloader, model, loss_fn, device="cpu"):
     model.eval()
     total_nll = None
@@ -104,15 +107,18 @@ def calculate_nll_per_gene(dataloader, model, loss_fn, device="cpu"):
             
     return total_nll
 
+
 def calculate_aic(n_params, neg_log_likelihood):
     # AIC = 2k + 2 * NLL
     return 2 * n_params + 2 * neg_log_likelihood
+
 
 def calculate_bic(n_params, neg_log_likelihood, n_samples):
     # BIC = k * ln(n) + 2 * NLL
     return n_params * np.log(n_samples) + 2 * neg_log_likelihood
 
-def run_de(args):
+
+def run_de(args, adata, pseudotime, weights):
     sim = args.sim
     data_dir = args.data_dir
     model_dir = args.model_dir
@@ -121,7 +127,6 @@ def run_de(args):
     dataset = args.dataset
     lineage = args.lineage
 
-    data_path = os.path.join(data_dir, dataset, f"sim_{sim}")
     model_path = os.path.join(model_dir, dataset, model_name)
     checkpoint = torch.load(model_path, weights_only=False)
 
@@ -136,23 +141,13 @@ def run_de(args):
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
-    counts, pseudotime, weights, tde = load_data(data_path)
-    true_de = tde.values.flatten()    
-
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
 
     model.eval()
 
-
     threshold = 0.8 
     pred_de = association_test(model, pseudotime, weights, model_gene, threshold, pt_min, pt_max)
-    trp, fdr = evaluate(pred_de, true_de)
-    print(f"TPR: {trp:.2f} | FDR: {fdr:.2f} | Delta AIC Threshold: {threshold:.2f} | Test: Association")
-
-
-    threshold = 2 
+    print(f"DE genes (association): {pred_de.shape[0]}")
     pred_de = information_criteria_test(checkpoint, null_checkpoint, threshold)
-    trp, fdr = evaluate(pred_de, true_de)
-
-    print(f"TPR: {trp:.2f} | FDR: {fdr:.2f} | Delta AIC Threshold: {threshold:.2f} | Test: AIC ")
+    print(f"DE genes (information): {pred_de.shape[0]}")

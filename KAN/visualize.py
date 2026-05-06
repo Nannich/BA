@@ -4,12 +4,14 @@ import torch
 import matplotlib.pyplot as plt
 from utils import *
 from formulas import *
-from dataset import *
+from dataloaders import *
 from model import build_model
 
 
 def plot_parameters(ax, model, checkpoint, gene_to_plot):
-    # Plot a textbox with the hyperparamters
+    """
+    Plots a textbox with the hyperparamters of the model.
+    """
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_type = checkpoint["model"]
     hidden_layers = checkpoint["hidden_layers"]
@@ -50,8 +52,10 @@ def plot_parameters(ax, model, checkpoint, gene_to_plot):
     return text_box
 
 def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors):
-    # Evaluates the model along each lineage and plots the predicted gene expression count
-    # against the data from the data set used during training
+    """
+    Plots the raw and smoothed prediction curves of the model.
+    """
+
     model.eval()
 
     gene = checkpoint["gene"]
@@ -63,51 +67,70 @@ def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors
     n_lineages = weights.shape[1]
 
     predictions_raw = predict_lineage_trajectories(pseudotime, weights, model, gene_to_plot, is_single_gene, pt_min, pt_max)
+    #predictions_smooth = predict_interpolated_trajectories(pseudotime, weights, model, gene_to_plot, is_single_gene, pt_min, pt_max)
 
     for l in range(n_lineages):
         x_raw, _, y_raw = predictions_raw[l]
-        x_smooth, y_smooth = smoothen_lineage_trajectory(y_raw, x_raw)
+        x_smooth, y_smooth = smoothen_lineage_trajectory(x_raw, y_raw)
+        #x_smooth, _, y_smooth = predictions_smooth[l]
 
-        ax.plot(x_raw, y_raw, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
+        ax.plot(x_raw, y_raw, linewidth=1, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
         ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=1)
         
 
 def plot_custom(ax, pseudotime, checkpoint, colors):
+    """
+    Plots the curve of a custom formula.
+    """
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
     n_lineages = pseudotime.shape[1]
     for l in range(n_lineages):
-        pt_input_scaled = scale_pt(pseudotime.values, pt_min, pt_max)
+        pt_input_scaled = scale_pt(pseudotime, pt_min, pt_max)
         y_formula_raw = sigmoid_sim1_gene12(pt_input_scaled[:, l], lineage=l)
         y_formula = np.log1p(np.exp(y_formula_raw))                       
         ax.plot(pseudotime, y_formula, linewidth=3, color=colors[l], linestyle="--", label=f"Lineage {l+1} (Symbolic)", alpha=0.7)
 
 
-def plot_scatter_data(ax, counts, pseudotime, weights, gene_to_plot, colors):
+def plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors):
+    """
+    Plots the expression count of each cell for each lineage it is in.
+    """
     lineage_assignment = get_lineage_assignment(weights)
     n_lineages = lineage_assignment.shape[1]
+    
+    # Get raw counts for plotting 
+    raw_counts = adata.raw.X
+    if hasattr(raw_counts, "toarray"):
+        raw_counts = raw_counts.toarray()
+        
     for l in range(n_lineages):
         mask = lineage_assignment[:, l]
-        pt_active = pseudotime.values[mask, l]
-        log_count_active = np.log1p(counts.values[mask, gene_to_plot])
-        ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.6)
+        pt_active = pseudotime[mask, l]
+        log_count_active = np.log1p(raw_counts[mask, gene_to_plot])
+        ax.scatter(pt_active, log_count_active, s=16, color=colors[l], alpha=0.4)
 
 
-def plot_everything(counts, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path):
+def plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path):
+    """
+    Plots the scatter data and curves.
+    """
     model.eval()
 
     n_lineages = weights.shape[1]
     
+    # Use the specific colormap for lineages
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     text_box = plot_parameters(ax, model, checkpoint, gene_to_plot,)
-    plot_scatter_data(ax, counts, pseudotime, weights, gene_to_plot, colors)
+    
+    plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors)
+    
     plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors)
-    #plot_custom(ax, pseudotime, checkpoint, colors)
-
+    
     ax.set_title(f"Gene: {gene_to_plot}")
     ax.set_xlabel("Pseudotime")
     ax.set_ylabel("Log(expression + 1)")
@@ -119,18 +142,14 @@ def plot_everything(counts, pseudotime, weights, model, checkpoint, gene_to_plot
     plt.show()
 
 
-def run_visualization(args):
+def run_visualization(args, adata, pseudotime, weights):
     gene_to_plot = args.gene
     model_dir = args.model_dir
     fig_dir = args.fig_dir
     model_name = args.name
     dataset = args.dataset
-    sim = args.sim
 
-    model_path = os.path.join(model_dir, dataset, model_name)
-    data_path = os.path.join(args.data_dir, dataset, f"sim_{sim}/")
-
-    counts, pseudotime, weights, tde = load_data(data_path)
+    model_path = os.path.join(model_dir, model_name)
 
     checkpoint = torch.load(model_path, weights_only=False)
     
@@ -138,9 +157,9 @@ def run_visualization(args):
     input_dim = checkpoint["input_dim"]
     output_dim = checkpoint["output_dim"]
 
-    fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_sim{sim}_gene{gene_to_plot}.png")
-    
+    fig_path = os.path.join(fig_dir, "visualize", dataset, f"{model_type}_{dataset}_gene{gene_to_plot}.png")
+    os.makedirs(os.path.dirname(fig_path), exist_ok=True)
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])
 
-    plot_everything(counts, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path)
+    plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot, fig_path)

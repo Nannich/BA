@@ -29,12 +29,16 @@ class ZINBLoss(nn.Module):
         """
         eps = self.eps
         y_true = y_true.float()
+
+        # Clip y_pred, theta to avoid numerical issues
+        y_pred = torch.clamp(y_pred, min=-10.0, max=12.0)
+        theta = torch.clamp(theta, min=-10.0, max=12.0)
+
         y_pred = torch.exp(y_pred) * self.scale_factor  # Ensure mu > 0
         theta = torch.exp(theta)                        # Ensure theta > 0
         pi = torch.sigmoid(pi.float())                  # Ensure pi is in (0, 1)
 
-        # Clip theta and pi to avoid numerical issues
-        theta = torch.clamp(theta, max=1e6)
+        # Clip pi 
         pi = torch.clamp(pi, min=eps, max=1.0 - eps)
 
         # Negative binomial log-likelihood

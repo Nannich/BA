@@ -5,13 +5,13 @@ from efficient_kan import KAN as EffKAN
 
 # Hyperparamters
 # Efficient-KAN
-EFFKAN_HIDDEN_LAYERS = [20]
-EFFKAN_GRID_SIZE = 3
+EFFKAN_HIDDEN_LAYERS = [4]
+EFFKAN_GRID_SIZE = 5
 EFFKAN_SPLINE_ORDER = 3
 
 # PyKAN
 PYKAN_HIDDEN_LAYERS = [1]
-PYKAN_GRID_SIZE = 2
+PYKAN_GRID_SIZE = 5
 PYKAN_SPLINE_ORDER = 3
 
 # MLP
@@ -36,7 +36,7 @@ class ZINB_EFFKAN(nn.Module):
             spline_order=EFFKAN_SPLINE_ORDER,
             # Both lineage weights and pseudtime are scaled to [0, 1]
             # Small buffer dampens the line curving up at the end
-            grid_range=[-1, 2],
+            grid_range=[-0.1, 1.1],
         )
 
     def forward(self, x, update_grid=False):

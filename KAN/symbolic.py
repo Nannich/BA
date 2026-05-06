@@ -24,10 +24,12 @@ def sympy_sigmoid(x):
 SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 1, lambda x, y: (x, y))
 
 def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
-    pt_values = pseudotime.values
-    pt_scaled = (pt_values - pt_min) / (pt_max - pt_min + 1e-8)
+    """
+    Uses pykans in built functions to extract a symbolic formula from the KAN.
+    """
+    pt_scaled = (pseudotime - pt_min) / (pt_max - pt_min + 1e-8)
 
-    trajectories = np.hstack((pt_scaled, weights.values))
+    trajectories = np.hstack((pt_scaled, weights))
     
     # Populate model
     model.eval()
@@ -89,12 +91,13 @@ def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
     
     print(rounded_mu)
 
-    
 
-def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, pt_max):
+def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, pt_max, lineage):
+    """
+    Uses pysr to fit an function to the curve of the specific lineage.
+    """
+
     from pysr import PySRRegressor
-    
-    lineage = 0
 
     is_single_gene = False if model_gene is None else True
 
@@ -134,8 +137,7 @@ def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, 
     pysr_model.fit(X_pysr, y_pred)
 
 
-def run_extraction(args):
-    sim = args.sim
+def run_extraction(args, adata, pseudotime, weights):
     gene = args.gene
     data_dir = args.data_dir
     model_dir = args.model_dir
@@ -143,7 +145,6 @@ def run_extraction(args):
     model_name = args.name
     dataset = args.dataset
 
-    data_path = os.path.join(data_dir, dataset, f"sim_{sim}")
     model_path = os.path.join(model_dir, dataset, model_name)
     
     checkpoint = torch.load(model_path, weights_only=False)
@@ -154,9 +155,7 @@ def run_extraction(args):
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
-    fig_path = os.path.join(fig_dir, "symbolic", dataset, f"sim{sim}_gene{gene}.png")
-
-    counts, pseudotime, weights, tde = load_data(data_path)
+    fig_path = os.path.join(fig_dir, "symbolic", dataset, f"{dataset}_gene{gene}.png")
     
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])

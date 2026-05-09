@@ -20,9 +20,9 @@ if __name__ == "__main__":
 
 """
 Gata1    -> Index: 1252
-Klf1     -> Index: 1670
+Klf1     -> Index: 1670 x
 Mpo      -> Index: 1913
-Elane    -> Index: 1040
+Elane    -> Index: 1040 x
 Cebpa    -> Index: 664 
 Cd34     -> Index: 619 
 Gata2    -> Index: 1253

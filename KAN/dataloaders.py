@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
+from utils import *
 
 class SingleCellDataset(Dataset):
     def __init__(self, trajectories, counts):
@@ -27,9 +28,7 @@ def get_dataloaders(adata, pseudotime, weights, target_gene=None, batch_size=64,
     pt_scaled = (pseudotime - pt_min) / (pt_max - pt_min + 1e-8)
     trajectories = np.hstack((pt_scaled, weights))
 
-    raw_counts = adata.raw.X
-    if hasattr(raw_counts, "toarray"):
-        raw_counts = raw_counts.toarray()
+    raw_counts = get_raw_counts(adata)
 
     if target_gene is not None:
         if isinstance(target_gene, str):
@@ -56,9 +55,7 @@ def get_eval_dataloader(adata, pseudotime, weights, pt_min, pt_max, target_gene=
     pt_scaled = (pseudotime - pt_min) / (pt_max - pt_min + 1e-8)
     trajectories = np.hstack((pt_scaled, weights))
 
-    raw_counts = adata.raw.X
-    if hasattr(raw_counts, "toarray"):
-        raw_counts = raw_counts.toarray()
+    raw_counts = get_raw_counts(adata)
 
     if target_gene is not None:
         if isinstance(target_gene, str):

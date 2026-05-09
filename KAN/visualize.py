@@ -23,8 +23,7 @@ def plot_parameters(ax, model, checkpoint, gene_to_plot):
     bic =  checkpoint["bic"]
     model_gene = checkpoint["gene"]
     
-    is_single_gene = model_gene is not None
-    gene_idx = 0 if is_single_gene else gene_to_plot
+    gene_idx = 0 if mse.shape[0] == 1 else gene_to_plot
 
     mse_list = [f"L{l+1}: {mse[gene_idx, l].item():.3f}" for l in range(mse.shape[1])]
     mse_val = " | ".join(mse_list)
@@ -66,15 +65,13 @@ def plot_curves(ax, pseudotime, weights, model, gene_to_plot, checkpoint, colors
     
     n_lineages = weights.shape[1]
 
-    predictions_raw = predict_lineage_trajectories(pseudotime, weights, model, gene_to_plot, is_single_gene, pt_min, pt_max)
-    #predictions_smooth = predict_interpolated_trajectories(pseudotime, weights, model, gene_to_plot, is_single_gene, pt_min, pt_max)
+    predictions_raw = predict_lineage_trajectories(pseudotime, weights, model, gene_to_plot, pt_min, pt_max)
 
     for l in range(n_lineages):
         x_raw, _, y_raw = predictions_raw[l]
         x_smooth, y_smooth = smoothen_lineage_trajectory(x_raw, y_raw)
-        #x_smooth, _, y_smooth = predictions_smooth[l]
 
-        ax.plot(x_raw, y_raw, linewidth=1, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
+        ax.plot(x_raw, y_raw, linewidth=2, color=colors[l], label=f"Lineage {l+1}", alpha=0.5)
         ax.plot(x_smooth, y_smooth, linewidth=3, color=colors[l], label=f"Lineage {l+1}", alpha=1)
         
 
@@ -101,9 +98,7 @@ def plot_scatter_data(ax, adata, pseudotime, weights, gene_to_plot, colors):
     n_lineages = lineage_assignment.shape[1]
     
     # Get raw counts for plotting 
-    raw_counts = adata.raw.X
-    if hasattr(raw_counts, "toarray"):
-        raw_counts = raw_counts.toarray()
+    raw_counts = get_raw_counts(adata)
         
     for l in range(n_lineages):
         mask = lineage_assignment[:, l]
@@ -118,9 +113,7 @@ def plot_everything(adata, pseudotime, weights, model, checkpoint, gene_to_plot,
     """
     model.eval()
 
-    n_lineages = weights.shape[1]
-    
-    # Use the specific colormap for lineages
+    n_lineages = weights.shape[1]    
     colors = plt.get_cmap('viridis')(np.linspace(0, 1, n_lineages))
 
     fig, ax = plt.subplots(figsize=(10, 6))

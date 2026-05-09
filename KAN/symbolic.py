@@ -21,7 +21,7 @@ class sigmoid(sympy.Function):
 def sympy_sigmoid(x):
     return sigmoid(x)
 
-SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 1, lambda x, y: (x, y))
+SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 2, lambda x, y: (x, y))
 
 def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
     """
@@ -39,11 +39,11 @@ def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
         model(X_sample)
 
     # Pruning
-    model.kan.remove_node(2, 1, mode='down')
-    model.kan.remove_node(2, 2, mode='down')
+    # model.kan.remove_node(2, 1, mode='down')
+    # model.kan.remove_node(2, 2, mode='down')
 
-    model.kan = model.kan.prune()
-    model.kan.prune_edge(threshold=0.05)
+    # model.kan = model.kan.prune()
+    # model.kan.prune_edge(threshold=0.05)
 
     # Plotting the KAN
     n_lineages = weights.shape[1]
@@ -74,16 +74,12 @@ def symbolic_pykan(model, pseudotime, weights, fig_path, pt_min, pt_max):
         'tan', 'tanh', 'arcsin', 'arccos', 'arctan', 'arctanh'
     ]
 
-    model.kan.auto_symbolic(lib=custom_lib, weight_simple=0.8)
-    
-
-    # Symbols for input variables
-    pt1, pt2, w1, w2 = sympy.symbols('pt1 pt2 w1 w2')
-    input_symbols = [pt1, pt2, w1, w2] 
+    model.kan.auto_symbolic(lib=custom_lib, weight_simple=0.5, r2_threshold=0.01)
 
     # Generate the formula
+    pt1, pt2, w1, w2 = sympy.symbols('pt1 pt2 w1 w2')
+    input_symbols = [pt1, pt2, w1, w2] 
     formulas = model.kan.symbolic_formula(var=input_symbols)
-    model.kan.suggest_symbolic(0, 1, 0, lib=custom_lib, topk=5)
 
     # Extract the formula for mu
     mu_formula = formulas[0][0] # type: ignore
@@ -103,12 +99,13 @@ def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, 
 
     model.eval()
    
-    predictions = predict_lineage_trajectories(pseudotime, weights, model, gene, is_single_gene, pt_min, pt_max)
+    predictions = predict_lineage_trajectories(pseudotime, weights, model, gene, pt_min, pt_max)
     pt_active_sorted, pt_input_scaled, y_pred = predictions[lineage]
 
 
     X_pysr = pt_input_scaled[:, lineage].reshape(-1, 1) # Format for PySR
-    
+    y_pred_flat = y_pred.flatten()
+
     pysr_model = PySRRegressor(
         niterations=100,
         binary_operators=["+", "*", "-", "/"],
@@ -134,7 +131,7 @@ def symbolic_pysr(model, counts, pseudotime, weights, gene, model_gene, pt_min, 
         random_state=0
     )
 
-    pysr_model.fit(X_pysr, y_pred)
+    pysr_model.fit(X_pysr, y_pred_flat)
 
 
 def run_extraction(args, adata, pseudotime, weights):
@@ -145,7 +142,7 @@ def run_extraction(args, adata, pseudotime, weights):
     model_name = args.name
     dataset = args.dataset
 
-    model_path = os.path.join(model_dir, dataset, model_name)
+    model_path = os.path.join(model_dir, model_name)
     
     checkpoint = torch.load(model_path, weights_only=False)
     model_type = checkpoint ["model"]
@@ -155,7 +152,7 @@ def run_extraction(args, adata, pseudotime, weights):
     pt_min = checkpoint["pt_min"]
     pt_max = checkpoint["pt_max"]
 
-    fig_path = os.path.join(fig_dir, "symbolic", dataset, f"{dataset}_gene{gene}.png")
+    fig_path = os.path.join(fig_dir, "symbolic", f"{dataset}_gene{gene}.png")
     
     model = build_model(model_type, input_dim, output_dim)
     model.load_state_dict(checkpoint["state_dict"])

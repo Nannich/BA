@@ -7,6 +7,7 @@ import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2.robjects.conversion import localconverter
 from sklearn.cluster import KMeans
+from utils import *
 
 # Preprocessing & Data Loading
 
@@ -148,6 +149,7 @@ def run_trajectory(adata, dataset_name="paul", data_dir="./data"):
     # Define file paths
     cache_path = os.path.join(data_dir, f"{dataset_name}_trajectory.npz")
     csv_path = os.path.join(data_dir, f"{dataset_name}_pseudotime.csv")
+    weights_csv_path = os.path.join(data_dir, f"{dataset_name}_weights.csv")
     plot_path = os.path.join(data_dir, f"{dataset_name}_slingshot_plot.png")
 
     # Check cache
@@ -161,7 +163,7 @@ def run_trajectory(adata, dataset_name="paul", data_dir="./data"):
     # Extract start and end clusters
     root_idx, cluster_labels, start_node, end_nodes = extract_topology(adata, dataset_name, data_dir)
     
-    counts = adata.raw.X.toarray() if hasattr(adata.raw.X, "toarray") else adata.raw.X
+    counts = get_raw_counts(adata)
 
     # Slingshot R script
     r_script = """
@@ -224,13 +226,15 @@ def run_trajectory(adata, dataset_name="paul", data_dir="./data"):
     weights = np.nan_to_num(weights, nan=0.0)
     np.savez(cache_path, pseudotime=pseudotime, weights=weights)
 
-    # Export the Pseudotime Matrix to a CSV
+    # Export the Pseudotime and Weights Matrix to a CSV
     num_lineages = pseudotime.shape[1]
     col_names = [f"Lineage_{i+1}" for i in range(num_lineages)]
     
     df_pt = pd.DataFrame(pseudotime, index=adata.obs_names, columns=col_names)
-    df_pt.replace(0.0, np.nan, inplace=True)
     df_pt.to_csv(csv_path)
+
+    df_weights = pd.DataFrame(weights, index=adata.obs_names, columns=col_names)
+    df_weights.to_csv(weights_csv_path)
 
     # Re-fill NaNs to 0.0 before returning to PyTorch
     pseudotime = np.nan_to_num(pseudotime, nan=0.0)

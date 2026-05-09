@@ -22,7 +22,7 @@ def association_test(model, pseudotime, weights, model_gene, threshold, pt_min, 
     
     de_across_lineages = []
     
-    predictions = predict_lineage_trajectories(pseudotime, weights, model, None, is_single_gene, pt_min, pt_max)
+    predictions = predict_lineage_trajectories(pseudotime, weights, model, None, pt_min, pt_max)
     
 
     for lineage in range(n_lineages):

@@ -12,7 +12,7 @@ from train import run_training
 from visualize import run_visualization
 from symbolic import run_extraction
 from de import run_de
-from grn import run_grn
+from grn_old import run_grn
 from preprocessing import run_preprocessing
 
 def main():
@@ -48,6 +48,9 @@ def main():
     parser_sym = subparsers.add_parser("grn")
     parser_sym.add_argument("name", type=str)
 
+    parser_sym = subparsers.add_parser("process")
+
+
     args = parser.parse_args()
 
     args.data_dir = os.path.expanduser(args.data_dir)
@@ -68,6 +71,8 @@ def main():
         run_de(args, adata, pseudotime, weights)
     elif args.command == "grn":
         run_grn(args, adata, pseudotime, weights)
+    elif args.command == "process":
+        run_preprocessing(args)
 
 
 if __name__ == "__main__":

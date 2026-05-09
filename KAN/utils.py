@@ -41,11 +41,20 @@ def sort_by_lineage(pseudotime, weights, lineage):
     
     return pt_sorted, weights_sorted
 
-
-def predict_lineage_trajectories(pseudotime, weights, model, gene_idx, is_single_gene, pt_min, pt_max):
+def filter_predictions(predictions, is_de):
     """
-    Runs the model once on each lineage and returns the predicted values in a dictionary (because lineages might differ in lengt).
-    Also returns the sorted and scaled pseudotimes for plotting. 
+    Filters the predictions in the dictionary by gene. 
+    """
+    filtered = {}
+    for l, (pt, scaled, y_raw) in predictions.items():
+        y_de = y_raw[:, is_de] if y_raw.ndim > 1 else y_raw
+        filtered[l] = (pt, scaled, y_de)
+    return filtered
+
+def predict_lineage_trajectories(pseudotime, weights, model, gene_idx, pt_min, pt_max):
+    """
+    Runs the model once on each lineage and returns the predicted values in a dictionary 
+    (because lineages might differ in length).
     """
     n_lineages = weights.shape[1]
     predictions = {}
@@ -65,12 +74,15 @@ def predict_lineage_trajectories(pseudotime, weights, model, gene_idx, is_single
         with torch.no_grad():
             mu, theta, pi = model(X_tensor)
 
-        if is_single_gene:
-            y_line = mu[:, 0].detach().cpu().numpy()        # Only gene is at index 0
-        elif gene_idx is None:
-            y_line = mu.detach().cpu().numpy()              # Return all genes
+        mu_np = mu.detach().cpu().numpy()
+
+        if gene_idx is None:
+            y_line = mu_np  # Keep all genes, shape is (n_cells, n_genes)
         else:
-            y_line = mu[:, gene_idx].detach().cpu().numpy() # Gene is at it's index
+            # Determine the integer index
+            idx = 0 if mu_np.shape[1] == 1 else gene_idx
+            # Forces the output to stay 2D: (n_cells, 1)
+            y_line = mu_np[:, [idx]]
         
         # Model predicts log counts but predictions should be log1p
         y_line = np.exp(y_line)                         
@@ -86,10 +98,6 @@ def smoothen_lineage_trajectory(pseudotime, y_line, n_bins=20):
     """
     Smoothens the predictions by averaging the predicted counts into n_bin intervals.
     """
-
-    # Ensure y_line is 2D (samples, genes) so indexing is consistent even if just one sample is provided
-    if y_line.ndim == 1:
-        y_line = y_line.reshape(-1, 1)
 
     # Create equally spaced bin boundaries from 0 to the maximum pseudotime
     bin_edges = np.linspace(0, np.max(pseudotime), n_bins + 1)
@@ -119,73 +127,39 @@ def smoothen_lineage_trajectory(pseudotime, y_line, n_bins=20):
     y_final = df_smoothed.interpolate(method='linear', axis=0).ffill().bfill().values
 
     # Return the new x-coordinates and the y-values
-    # If only one gene was processed flatten back to 1 dimension
-    return bin_centers, y_final.flatten() if y_final.shape[1] == 1 else y_final
+    return bin_centers, y_final
 
 
-def predict_interpolated_trajectories(pseudotime, weights, model, gene_idx, is_single_gene, pt_min, pt_max, n_points=200):
+def build_smoothed_cube(filtered_predictions, n_bins=20):
     """
-    Interpolate the datasets inputs to create smooth synthetic inputs.
+    Converts a dictionary of varying-length lineages into a 
+    fixed-size 3D Matrix: (Gene, Lineage, Bin).
     """
-    n_lineages = weights.shape[1]
-    predictions = {}
+    n_lineages = len(filtered_predictions)
+    # Grab first lineage to see how many DE genes we have
+    _, _, first_y = filtered_predictions[0]
+    n_de_genes = first_y.shape[1]
+
+    # Shape: (DE Genes, Lineages, Bins)
+    trajectory_matrix = np.zeros((n_de_genes, n_lineages, n_bins))
+
+    for l, (pt, _, y_de) in filtered_predictions.items():
+        # Smoothening creates a fixed 'n_bins' length
+        _, y_smooth = smoothen_lineage_trajectory(pt, y_de, n_bins=n_bins)
+        
+        # y_smooth is (n_bins, n_de_genes), so we transpose to (n_de_genes, n_bins)
+        trajectory_matrix[:, l, :] = y_smooth.T
+
+    return trajectory_matrix
+
+
+def get_raw_counts(adata):
+    # Use .raw if it exists, otherwise fall back to .X
+    data_source = adata.raw.X if adata.raw is not None else adata.X
     
-    model.eval()
-
-    for lineage in range(n_lineages):
-        # 1. Get the real data for this lineage sorted by its pseudotime
-        pt_sorted, weights_sorted = sort_by_lineage(pseudotime, weights, lineage)
-        pt_active_sorted = pt_sorted[:, lineage]
-        
-        if len(pt_active_sorted) == 0:
-            continue # Skip if no cells are assigned to this lineage
-
-        pt_active_max = pt_active_sorted.max()
-        
-        # Create the linear synthetic grid for the active pseudotime
-        pt_grid = np.linspace(0, pt_active_max, n_points)
-        pt_input = np.zeros((n_points, n_lineages))
-        pt_input[:, lineage] = pt_grid
-        
-        # Interpolate the inactive pseudotimes
-        for l in range(n_lineages):
-            if l != lineage:
-                pt_inactive_sorted = pt_sorted[:, l]
-                # Fit 3rd degree polynomial: active_pt -> inactive_pt
-                poly_fit = np.polyfit(pt_active_sorted, pt_inactive_sorted, deg=3)
-                poly_func = np.poly1d(poly_fit)
-                pt_input[:, l] = np.clip(poly_func(pt_grid), 0.0, None)
-
-        # Scale synthetic pseudotimes
-        pt_input_scaled = scale_pt(pt_input, pt_min, pt_max)
-        
-        # Interpolate the weights
-        w_input = np.zeros((n_points, n_lineages))
-        for k in range(n_lineages):
-            w_sorted = weights_sorted[:, k]
-            # Fit 3rd degree polynomial: active_pt -> weight
-            poly_fit = np.polyfit(pt_active_sorted, w_sorted, deg=3)
-            poly_func = np.poly1d(poly_fit)
-            w_input[:, k] = np.clip(poly_func(pt_grid), 0.0, 1.0)
-            
-        # Run the model on the synthetic data
-        input_matrix = np.hstack((pt_input_scaled, w_input))
-        X_tensor = torch.tensor(input_matrix, dtype=torch.float32)
-
-        with torch.no_grad():
-            mu, theta, pi = model(X_tensor)
-
-        if is_single_gene:
-            y_line = mu[:, 0].detach().cpu().numpy()
-        elif gene_idx is None:
-            y_line = mu.detach().cpu().numpy()
-        else:
-            y_line = mu[:, gene_idx].detach().cpu().numpy()
-        
-        # Convert log(mu) back to log1p(raw counts)
-        y_line = np.log1p(np.exp(y_line))
-
-        # Store results (pt_grid is the true x-axis for plotting)
-        predictions[lineage] = (pt_grid, pt_input_scaled, y_line)
-
-    return predictions
+    # Check if it has the 'toarray' method (indicates it's a Scipy sparse matrix)
+    if hasattr(data_source, "toarray"):
+        return data_source.toarray().astype(np.float32)
+    
+    # Otherwise, assume it's already a numpy array or similar
+    return np.array(data_source, dtype=np.float32)

@@ -1,13 +1,14 @@
 import time
 import torch
-import os
 import numpy as np
 import copy
+from pathlib import Path
 
 from src.dataloaders import get_dataloaders, get_eval_dataloader
-from src.analysis.de import calculate_mse_per_curve, calculate_nll_per_gene, calculate_aic, calculate_bic
+from src.de import calculate_mse_per_curve, calculate_nll_per_gene, calculate_aic, calculate_bic
 from src.model import build_model, MLP_HIDDEN_LAYERS, PYKAN_HIDDEN_LAYERS, EFFKAN_HIDDEN_LAYERS
 from src.loss import ZINBLoss, MSEWrapperLoss
+from src.config import MODELS_DIR, ensure_dir
 
 BATCH_SIZE = 256
 EPOCHS = 2000
@@ -21,7 +22,6 @@ TRAIN_CONFIG = {
     "pykan":  {"lr": 0.0024, "wd": 3.5e-6},
     "null":   {"lr": 0.001,  "wd": 0.0}
 }
-
 
 
 def train_loop(dataloader, model, loss_fn, optimizer, device, epoch, is_kan):
@@ -78,12 +78,14 @@ def test_loop(dataloader, model, loss_fn, device, is_kan):
     return total_test_loss / len(dataloader)
 
 
-def run_training(args, adata, pseudotime, weights):
+def run_trajectory(args, adata, pseudotime, weights, run_model_dir, loss_type="mse"):
+    """
+    Trains the trajectory prediction model and saves it.
+    """
     model_type = args.model
-    model_dir = args.model_dir
     target_gene = args.gene
     dataset = args.dataset
-
+    
     config = TRAIN_CONFIG.get(model_type)
     lr = config["lr"]
     wd = config["wd"]
@@ -92,13 +94,14 @@ def run_training(args, adata, pseudotime, weights):
         adata, pseudotime, weights, target_gene, BATCH_SIZE
     )
     
-     # Initialize the model
+    # Initialize the model
     model = build_model(model_type, input_dim, output_dim)
     checkpoint = {
         "input_dim": input_dim,
         "output_dim": output_dim,
         "model": model_type,
         "gene": target_gene,
+        "loss_type": loss_type,
         "state_dict": model.state_dict(),
         "pt_min": pt_min,
         "pt_max": pt_max,
@@ -107,22 +110,24 @@ def run_training(args, adata, pseudotime, weights):
         "wd": wd,
         "lr": lr,
         "mse": 0,
-        "zinb_loss": float('inf')
+        "best_val_loss": float('inf')
     }
 
     gene_str = f"gene{target_gene}" if target_gene is not None else "all"
-    # filename = f"MSE_{model_type}_{dataset}_{gene_str}.pth"
-    filename = f"{model_type}_{dataset}_{gene_str}.pth"
-    model_path = os.path.join(model_dir, filename)
+    filename = f"{model_type}_{dataset}_{gene_str}_{loss_type}.pth"
+    model_path = run_model_dir / filename
 
     device = "cpu"
     model.to(device)
-    print(f"Starting training on: {device}")
+    print(f"Starting training on: {device} via loss: {loss_type}")
     training_start_time = time.time()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
-    #loss_fn = MSEWrapperLoss()
-    loss_fn = ZINBLoss(ridge_lambda=0.11)
+    
+    if loss_type == "mse":
+        loss_fn = MSEWrapperLoss()
+    else:
+        loss_fn = ZINBLoss(ridge_lambda=0.11)
 
     best_val_loss = float('inf')
     epochs_no_improve = 0
@@ -135,22 +140,23 @@ def run_training(args, adata, pseudotime, weights):
         val_loss = test_loop(test_dataloader, model, loss_fn, device, is_kan)
 
         if t % 5 == 0:
-            print(f"Epoch [{t+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Test: {val_loss:.4f} | "
-                  f"Raw μ: {a_mu:.2f}, Raw θ: {a_th:.2f}, π: {a_pi:.2f}")
+            if loss_type == "zinb":
+                print(f"Epoch [{t+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Test: {val_loss:.4f} | "
+                      f"Raw μ: {a_mu:.2f}, Raw θ: {a_th:.2f}, π: {a_pi:.2f}")
+            else:
+                print(f"Epoch [{t+1}/{EPOCHS}] | Train MSE Loss: {train_loss:.4f} | Test MSE: {val_loss:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0
             checkpoint["state_dict"] = copy.deepcopy(model.state_dict())
-            checkpoint["zinb_loss"] = best_val_loss
+            checkpoint["best_val_loss"] = best_val_loss
             torch.save(checkpoint, model_path)
         else:
             epochs_no_improve += 1
 
         if epochs_no_improve >= PATIENCE:
             print(f"Early stopping triggered after {t+1} epochs.")
-            checkpoint["epochs"] = t + 1
-            torch.save(checkpoint, model_path)
             break
 
     training_end_time = time.time()
@@ -161,7 +167,6 @@ def run_training(args, adata, pseudotime, weights):
     print(f"AVERAGE TIME PER EPOCH: {total_duration / (t+1):.2f} seconds")
     print("-" * 30)
 
-    # Add Evaluation metrics to checkpoint
     checkpoint = torch.load(model_path, weights_only=False)
     model.load_state_dict(checkpoint["state_dict"])    
     
@@ -170,26 +175,28 @@ def run_training(args, adata, pseudotime, weights):
     )
     
     mse_per_curve = calculate_mse_per_curve(full_dataloader, model, device)
-    
-    unreduced_loss_fn = ZINBLoss(reduction='none') 
-    total_nll_tensor = calculate_nll_per_gene(full_dataloader, model, unreduced_loss_fn, device)
-    
-    # Number of parameters: k
-    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    n_genes = total_nll_tensor.shape[0]
-
-    # Distribute k across the number of genes
-    k_per_gene = n_params / n_genes
-    n_samples = len(full_dataloader.dataset)
-
-    # Calculate global bic and aic
-    global_nll = total_nll_tensor.sum().item()
-    global_k = n_params
-    checkpoint["global_aic"] = 2 * global_k + 2 * global_nll
-    checkpoint["global_bic"] = global_k * np.log(n_samples) + 2 * global_nll
-
     checkpoint["mse"] = mse_per_curve.cpu()
-    checkpoint["aic"] = calculate_aic(k_per_gene, total_nll_tensor).cpu()
-    checkpoint["bic"] = calculate_bic(k_per_gene, total_nll_tensor, n_samples).cpu()
+
+    if loss_type == "zinb":
+        unreduced_loss_fn = ZINBLoss(reduction='none') 
+        total_nll_tensor = calculate_nll_per_gene(full_dataloader, model, unreduced_loss_fn, device)
+        
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        n_genes = total_nll_tensor.shape[0]
+
+        k_per_gene = n_params / n_genes
+        n_samples = len(full_dataloader.dataset)
+
+        global_nll = total_nll_tensor.sum().item()
+        global_k = n_params
+        checkpoint["global_aic"] = 2 * global_k + 2 * global_nll
+        checkpoint["global_bic"] = global_k * np.log(n_samples) + 2 * global_nll
+        checkpoint["aic"] = calculate_aic(k_per_gene, total_nll_tensor).cpu()
+        checkpoint["bic"] = calculate_bic(k_per_gene, total_nll_tensor, n_samples).cpu()
+    else:
+        checkpoint.pop("global_aic", None)
+        checkpoint.pop("global_bic", None)
+        checkpoint.pop("aic", None)
+        checkpoint.pop("bic", None)
     
     torch.save(checkpoint, model_path)

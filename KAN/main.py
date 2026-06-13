@@ -1,78 +1,118 @@
 import ctypes
-import os
+from pathlib import Path
 
 try:
     ctypes.CDLL("libgomp.so.1", mode=ctypes.RTLD_GLOBAL)
 except OSError:
     pass
 
-import os
 import argparse
-from src.train import run_training
-from src.plotting.visualize import run_visualization
-from src.analysis.symbolic import run_extraction
-from src.analysis.de import run_de
-from src.analysis.grn import run_grn
+import torch
+import random
+import numpy as np
+import os
+from src.config import DATA_DIR, MODELS_DIR, FIGURES_DIR, ensure_dir
+from src.trajectory import run_trajectory
+from src.plotting import run_visualization
+from src.symbolic import run_extraction
+from src.de import run_de
+from src.grn import run_grn
 from src.preprocessing import run_preprocessing
+from src.cluster import run_plot_clusters
+
+
+def set_global_seed(seed: int = 1):
+    """
+    Sets a deterministic seed across Python, NumPy, and PyTorch 
+    to guarantee reproducible weight initializations and data splits.
+    """
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # Safe for multi-GPU setups
+    
+    # Force PyTorch operations to use deterministic algorithms
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def main():
+    set_global_seed(1)
+
     parser = argparse.ArgumentParser()
     
-    # Paths
-    parser.add_argument("--data_dir", type=str, default="./data/")
-    parser.add_argument("--model_dir", type=str, default="./checkpoints/")
-    parser.add_argument("--fig_dir", type=str, default="./figures/")
+    # Global routing configuration switches
+    parser.add_argument("--dataset", type=str, default="paul",
+                        help="Target dataset directory identifier (e.g., 'paul', 'li').")
+    parser.add_argument("--experiment_name", type=str, default="baseline",
+                        help="Groups model checkpointers and output figures under this specific profile run.")
 
-    # Parse dataset
-    parser.add_argument("--dataset", type=str, default="paul")
-
-    # Parse command specific arguments
+    # Parse command-specific sub-arguments
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    parser_train = subparsers.add_parser("train")
-    parser_train.add_argument("--model", type=str, choices=["effkan", "pykan", "mlp", "null"], default="effkan")
-    parser_train.add_argument("--gene", type=int, default=None) # Choose None to train all
+    # 1. Trajectory Parser
+    parser_trajectory = subparsers.add_parser("trajectory", help="Train a trajectory expression prediction model.")
+    parser_trajectory.add_argument("--model", type=str, choices=["effkan", "pykan", "mlp", "null"], default="effkan")
+    parser_trajectory.add_argument("--gene", type=int, default=None, help="Integer target gene index (None trains all).")
 
-    parser_vis = subparsers.add_parser("visualize")
-    parser_vis.add_argument("name", type=str)
-    parser_vis.add_argument("gene", type=int, nargs="?", default=None)
+    # 2. Visualize Parser
+    parser_vis = subparsers.add_parser("visualize", help="Extract and render expression curve visualizations.")
+    parser_vis.add_argument("--gene", type=int, default=None, help="Target gene index to plot within the loaded model layer.")
+    parser_vis.add_argument("--checkpoint_name", type=str, default=None)
 
-    parser_sym = subparsers.add_parser("symbolic")
-    parser_sym.add_argument("--name", type=str)
-    parser_sym.add_argument("--gene")
+    # 3. Symbolic Parser
+    parser_sym = subparsers.add_parser("symbolic", help="Extract mathematical equations from trained models.")
+    parser_sym.add_argument("--gene", default=None, help="Filter equation mapping for a single gene index.")
     
-    parser_de = subparsers.add_parser("de")
-    parser_de.add_argument("name", type=str)
-    parser_de.add_argument("--lineage", type=int, default=0)
+    # 4. DE Parser
+    parser_de = subparsers.add_parser("de", help="Compute differential expression tests on trained models.")
+    parser_de.add_argument("--sim", type=int, default=1, help="Simulation validation target index tracker.")
+    parser_de.add_argument("--lineage", type=int, default=0, help="Target lineage identifier index.")
 
-    parser_grn = subparsers.add_parser("grn")
-    parser_grn.add_argument("--name", type=str)
+    # 5. GRN Parser
+    parser_grn = subparsers.add_parser("grn", help="Infer Gene Regulatory Network adjacency matrices.")
 
-    parser_process = subparsers.add_parser("process")
+    # 6. Preprocessing Pre-flight Check Parser
+    parser_process = subparsers.add_parser("process", help="Pre-compute data caches, normalizations, and topologies.")
 
+    # 6. Preprocessing Pre-flight Check Parser
+    parser_cluster = subparsers.add_parser("cluster")
 
     args = parser.parse_args()
 
-    args.data_dir = os.path.expanduser(args.data_dir)
-    args.model_dir = os.path.expanduser(args.model_dir)
-    args.fig_dir = os.path.expanduser(args.fig_dir)
+    run_model_dir = ensure_dir(MODELS_DIR / args.dataset / args.experiment_name)
+    run_fig_dir = ensure_dir(FIGURES_DIR / args.dataset / args.experiment_name)
+    ensure_dir(DATA_DIR)
 
-    # Fetch and preprocess the dataset
-    adata, pseudotime, weights = run_preprocessing(args)    
+    adata, pseudotime, weights = run_preprocessing(dataset_name=args.dataset)    
 
-    # Run the correct script based on the command
-    if args.command == "train":
-        run_training(args, adata, pseudotime, weights)
+    if args.command == "trajectory":
+        run_trajectory(args, adata, pseudotime, weights, run_model_dir)
+        
     elif args.command == "visualize":
-        run_visualization(args, adata, pseudotime, weights)
+        run_visualization(args, adata, pseudotime, weights, run_model_dir, run_fig_dir)
+        
     elif args.command == "symbolic":
-        run_extraction(args, adata, pseudotime, weights)
+        run_extraction(args, adata, pseudotime, weights, run_model_dir, run_fig_dir)
+        
     elif args.command == "de":
-        run_de(args, adata, pseudotime, weights)
+        run_de(args, adata, pseudotime, weights, run_model_dir)
+        
     elif args.command == "grn":
-        run_grn(args, adata, pseudotime, weights)
+        run_grn(args, adata, pseudotime, weights, run_model_dir)
+        
     elif args.command == "process":
-        run_preprocessing(args)
+        run_preprocessing(args.dataset)
+        
+    elif args.command == "cluster":
+        run_plot_clusters(
+            adata=adata,
+            pseudotime=pseudotime,
+            weights=weights,
+            run_model_dir=run_model_dir,
+            run_fig_dir=run_fig_dir
+        )
 
 
 if __name__ == "__main__":

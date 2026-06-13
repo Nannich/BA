@@ -19,36 +19,27 @@ MLP_HIDDEN_LAYERS = [489, 489, 489]
 
 
 class ZINB_EFFKAN(nn.Module):
-    """
-    A wrapper that makes the KAN work with ZINBloss by predicting three parameters per gene:
-    - mu: Predicted true biological mean expression
-    - theta: Dispersion parameter (variance)
-    - pi: Dropout probability (zero-inflation)
-    """
     def __init__(self, input_dim, output_dim):
         super().__init__()
-
+        # output_dim equals n_genes * 3
         layers = [input_dim] + EFFKAN_HIDDEN_LAYERS + [output_dim]
         self.kan = EffKAN(
             layers,
             grid_size=EFFKAN_GRID_SIZE,
             spline_order=EFFKAN_SPLINE_ORDER,
-            # Both lineage weights and pseudtime are scaled to [0, 1]
-            # Small buffer dampens the line curving up at the end
             grid_range=[-0.1, 1.1],
         )
 
     def forward(self, x, update_grid=False):
         raw_output = self.kan(x, update_grid=update_grid)
         
-        # Because three parameters are predicted per gene the output dim is n_genes * 3
-        # The first third holds all mu values for each gene, the second third all theta
-        # values and the third one all pi values
+        batch_size = raw_output.shape[0]
         n_genes = raw_output.shape[1] // 3
+        reshaped = raw_output.view(batch_size, n_genes, 3)
 
-        mu =    raw_output[:, :n_genes]
-        theta = raw_output[:, n_genes:n_genes*2]
-        pi =    raw_output[:, n_genes * 2:]
+        mu =    reshaped[:, :, 0]
+        theta = reshaped[:, :, 1]
+        pi =    reshaped[:, :, 2]
 
         return mu, theta, pi
 
@@ -69,12 +60,11 @@ class ZINB_PYKAN(nn.Module):
 
     def forward(self, x, update_grid=False):
         raw_output = self.kan(x)
-        
         n_genes = raw_output.shape[1] // 3
 
         mu =    raw_output[:, :n_genes]
         theta = raw_output[:, n_genes:n_genes*2]
-        pi =    raw_output[:, n_genes * 2:]
+        pi =    raw_output[:, n_genes*2:n_genes*3]
 
         return mu, theta, pi
 

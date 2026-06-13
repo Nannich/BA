@@ -71,8 +71,7 @@ class ZINBLoss(nn.Module):
 
 class MSEWrapperLoss(nn.Module):
     """
-    A dummy wrapper that ignores theta and pi to train purely on MSE.
-    Useful for baseline comparisons.
+    Wrapper that ignores theta and pi to train purely on MSE.
     """
     def __init__(self):
         super(MSEWrapperLoss, self).__init__()

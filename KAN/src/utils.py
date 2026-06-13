@@ -1,9 +1,10 @@
-import os
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
 from efficient_kan import KAN
+import random
+import os
 
 def get_lineage_assignment(weights):
     """
@@ -32,7 +33,7 @@ def sort_by_lineage(pseudotime, weights, lineage):
     pt_active = pseudotime[mask]
     weights_active = weights[mask]
 
-    # Get sort indices based on the target lineage's column
+    # Get sort indices based on the target lineages column
     sort_idx = np.argsort(pt_active[:, lineage])
     
     # Apply sort to 2D matrices
@@ -72,7 +73,15 @@ def predict_lineage_trajectories(pseudotime, weights, model, gene_idx, pt_min, p
 
         # Run model
         with torch.no_grad():
-            mu, theta, pi = model(X_tensor)
+            if hasattr(model, 'kan') and type(model.kan).__name__ == 'KAN':
+                raw_output = model.kan(X_tensor)
+                batch_size = raw_output.shape[0]
+                n_genes = raw_output.shape[1] // 3
+                
+                reshaped = raw_output.view(batch_size, n_genes, 3)
+                mu = reshaped[:, :, 0]
+            else:
+                mu, _, _ = model(X_tensor)
 
         mu_np = mu.detach().cpu().numpy()
 
@@ -144,7 +153,7 @@ def build_smoothed_cube(filtered_predictions, n_bins=20):
     trajectory_matrix = np.zeros((n_de_genes, n_lineages, n_bins))
 
     for l, (pt, _, y_de) in filtered_predictions.items():
-        # Smoothening creates a fixed 'n_bins' length
+        # Smoothening creates a fixed n_bins length
         _, y_smooth = smoothen_lineage_trajectory(pt, y_de, n_bins=n_bins)
         trajectory_matrix[:, l, :] = y_smooth.T
 
@@ -162,13 +171,18 @@ def get_raw_counts(adata):
     return np.array(data_source, dtype=np.float32)
 
 
-def get_lagged_expression(adata, pseudotime, weights, target_idx, lag=5):
-    """
-    Creates time-lagged X and Y matrices by sorting cells by pseudotime within each lineage.
-    X contains the predictor genes at time t. 
-    Y contains the target gene at time t + lag.
-    """
-    raw_counts = get_raw_counts(adata)
+def get_lagged_expression(adata, pseudotime, weights, target_idx, de_gene_names=None, dt=0.08):
+    raw_counts = np.log1p(get_raw_counts(adata))
+    
+    # If the pipeline passes a pre-filtered DE gene matrix, align indices to it
+    if de_gene_names is not None:
+        gene_names = list(adata.var_names)
+        # Map back to absolute coordinates to pull clean count profiles
+        de_indices = [gene_names.index(name) for name in de_gene_names]
+        expression_matrix = raw_counts[:, de_indices]
+    else:
+        expression_matrix = raw_counts
+
     n_lineages = weights.shape[1]
     lineage_assignment = get_lineage_assignment(weights)
 
@@ -176,36 +190,51 @@ def get_lagged_expression(adata, pseudotime, weights, target_idx, lag=5):
     Y_lagged = []
 
     for l in range(n_lineages):
-        # Mask cells belonging to this specific lineage
         mask = lineage_assignment[:, l]
         if not np.any(mask): 
             continue
         
-        # Get counts and pseudotime for these cells
-        lin_counts = raw_counts[mask]
+        lin_counts = expression_matrix[mask]
         lin_pt = pseudotime[mask, l]
         
-        # Sort chronologically by pseudotime
+        # Sort by pseudotime
         sort_idx = np.argsort(lin_pt)
         lin_counts_sorted = lin_counts[sort_idx]
+        lin_pt_sorted = lin_pt[sort_idx]
         
-        # Apply the time lag
-        if len(lin_counts_sorted) <= lag: 
-            continue
+        # For each cell at time t: interpolate target gene at time t + dt
+        X_branch = []
+        Y_branch = []
         
-        # X is time t (all cells except the last 'lag' cells)
-        X_t = lin_counts_sorted[:-lag]
+        max_pt_on_branch = lin_pt_sorted[-1]
         
-        # Drop the target gene from the inputs so we only predict using the other genes
-        X_t = np.delete(X_t, target_idx, axis=1)
-        
-        # Y is time t+lag (target gene only, skipping the first 'lag' cells)
-        Y_t_plus_lag = lin_counts_sorted[lag:, [target_idx]]
-        
-        X_lagged.append(X_t)
-        Y_lagged.append(Y_t_plus_lag)
+        for i in range(len(lin_pt_sorted)):
+            t = lin_pt_sorted[i]
+            t_future = t + dt
+            
+            if t_future > max_pt_on_branch:
+                break
+                
+            # Predictor values: All genes for this cell at time t
+            x_t = lin_counts_sorted[i, :]
+            
+            # Target values: Linearly interpolate the target gene's value at t + dt
+            y_future = np.interp(t_future, lin_pt_sorted, lin_counts_sorted[:, target_idx])
+            
+            X_branch.append(x_t)
+            Y_branch.append([y_future])
+            
+        if len(X_branch) > 0:
+            X_lagged.append(np.array(X_branch))
+            Y_lagged.append(np.array(Y_branch))
+
+    if not X_lagged:
+        raise ValueError(f"Lag horizon dt={dt} too wide")
 
     X_final = np.vstack(X_lagged)
     Y_final = np.vstack(Y_lagged)
+
+    # Drop target gene column from the predictors matrix
+    X_final = np.delete(X_final, target_idx, axis=1)
 
     return X_final, Y_final

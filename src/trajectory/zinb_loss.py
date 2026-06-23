@@ -3,6 +3,14 @@ from torch import nn
 import torch.nn.functional as F
 
 class ZINBLoss(nn.Module):
+    """
+    Zero-Inflated Negative Binomial (ZINB) Loss.
+
+    Note:
+        Algorithmic implementation adapted from the `zinbautoencoder` module 
+        within the Netmap package:
+        https://github.com/bionetslab/netmap/blob/main/src/netmap/model/zinbautoencoder.py
+    """
     def __init__(self, scale_factor=1.0, eps=1e-10, ridge_lambda=0.0, reduction='mean'):
         """
         Zero-Inflated Negative Binomial (ZINB) Loss
@@ -31,13 +39,8 @@ class ZINBLoss(nn.Module):
         eps = self.eps
         y_true = y_true.float()
 
-        # Clip y_pred, theta to avoid numerical issues
-        y_pred = torch.clamp(y_pred, min=-10.0, max=12.0)
-        theta = torch.clamp(theta, min=-10.0, max=12.0)
-
-        y_pred = torch.exp(y_pred) * self.scale_factor  # Ensure mu > 0
-        theta = torch.exp(theta)                        # Ensure theta > 0
-        pi = torch.sigmoid(pi.float())                  # Ensure pi is in (0, 1)
+        # Inputs are ALREADY natively activated raw counts from the model container.
+        y_pred = y_pred * self.scale_factor  # Ensure scale factor is applied to pre-activated mu
 
         # Clip pi 
         pi = torch.clamp(pi, min=eps, max=1.0 - eps)
@@ -50,6 +53,8 @@ class ZINBLoss(nn.Module):
             + (theta + y_true) * torch.log(1.0 + (y_pred / (theta + eps)))
             + y_true * (torch.log(theta + eps) - torch.log(y_pred + eps))
         )
+
+        nb_case = nb_case - torch.log(1.0 - pi)
 
         # Zero-inflation log-likelihood for y_true = 0
         zero_nb = torch.pow(theta / (theta + y_pred + eps), theta)
@@ -77,12 +82,11 @@ class MSEWrapperLoss(nn.Module):
         super(MSEWrapperLoss, self).__init__()
 
     def forward(self, y_true, mu, theta, pi):
-        # 1. Log transform the ground truth
+        # Log transform the ground truth
         y_true_log1p = torch.log1p(y_true.float())
         
-        # 2. Clamp and transform the prediction (just like in evaluation)
-        mu_clamped = torch.clamp(mu, min=-10.0, max=12.0)
-        y_pred_log1p = torch.log1p(torch.exp(mu_clamped))
+        # Log transform the pre-activated raw prediction vector
+        y_pred_log1p = torch.log1p(mu)
         
-        # 3. Calculate standard Mean Squared Error
+        # Calculate standard Mean Squared Error
         return F.mse_loss(y_pred_log1p, y_true_log1p)

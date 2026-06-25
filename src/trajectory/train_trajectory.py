@@ -128,17 +128,17 @@ def train_trajectory_mlp(
     hidden_layers=None, 
     epochs=500, 
     lr=0.02, 
-    weight_decay=1e-05, 
+    weight_decay=1e-06, 
     gradient_clip_limit=5, 
     save_dir=None
 ):
     """Trains a MLP to model a single gene's expression trajectory."""
     X, Y, in_f, out_f, gene_label = prepare_data(dataset, target_gene_idx)
-    hidden_layers = hidden_layers if hidden_layers is not None else [489, 489, 489]
+    hidden_layers = hidden_layers if hidden_layers is not None else [16, 16]
 
     model = build_mlp_model(in_f, out_f, hidden_layers)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    loss_fn = MSEWrapperLoss() if loss == "mse" else ZINBLoss(ridge_lambda=0.11)
+    loss_fn = MSEWrapperLoss() if loss == "mse" else ZINBLoss(ridge_lambda=0.1)
 
     print(f"Model: MLP | | Loss: {loss.upper()} | Target: {gene_label}")
     start_time = time.time()

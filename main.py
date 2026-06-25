@@ -7,10 +7,11 @@ from src.core.preprocessing import run_preprocessing
 from src.trajectory.train_trajectory import run_trajectory
 from src.trajectory.plot_trajectory import run_plotting as run_plot_trajectory
 from src.trajectory.eval_trajectory import run_eval as run_eval_trajectory
+from src.trajectory.benchmark_trajectory import run_benchmark_trajectory
 
 from src.grn.extract_grn import run_grn as run_extract_grn
 from src.grn.plot_grn import run_plot_grn
-from src.grn.benchmark_grn import run_benchmark
+from src.grn.benchmark_grn import run_benchmark_grn
 
 from src.symbolic.extract_symbolic import run_symbolic_pipeline
 from src.symbolic.plot_symbolic import run_plot_symbolic
@@ -73,8 +74,10 @@ def build_parser():
     sym_plot.add_argument("--checkpoint", type=str, required=True, help="Direct path to the target .pth KAN checkpoint file.")
 
     # Becnhmark
-    parser_benchmark = domain_subparsers.add_parser("benchmark", help="Run GRN benchmark.")
+    parser_benchmark = domain_subparsers.add_parser("benchmark", help="Run system benchmarks.")
     parser_benchmark.add_argument("search_path", type=str, help="Root directory to discover datasets.")
+    parser_benchmark.add_argument("--mode", type=str, choices=["grn", "trajectory"], default="grn",
+                                  help="Benchmark target domain: 'grn' or 'trajectory' (default: grn).")
 
     # Preprocessing
     parser_process = domain_subparsers.add_parser("process", parents=[base_dataset_parser], help="Cache dataset.")
@@ -88,7 +91,10 @@ def main():
     args = parser.parse_args()
 
     if args.domain == "benchmark":
-        run_benchmark(args)
+        if args.mode == "trajectory":
+            run_benchmark_trajectory(args)
+        else:
+            run_benchmark_grn(args)
         return
 
     ensure_dir(DATA_DIR)

@@ -58,7 +58,7 @@ def calculate_network_metrics(df_edges, gt_csv_path, gene_names):
     return auroc, auprc, auprc_ratio
 
 
-def run_benchmark(args):
+def run_benchmark_grn(args):
     """
     Executes architectures, evaluates accuracy metrics, and exports summary tables.
     """

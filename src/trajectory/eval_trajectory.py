@@ -14,13 +14,15 @@ def calculate_mse_per_curve(model, X, Y, lineage_mask):
     model.eval()
     
     with torch.no_grad():
-        mu, _, _ = model(X)
+        mu, _, pi_logits = model(X)
         
-        # Transform both observations and predictions to log1p space
+        pi = torch.sigmoid(pi_logits)
+        expected_value = (1.0 - pi) * mu
+        
         y_true_log1p = torch.log1p(Y.float())
-        y_pred_log1p = torch.log1p(mu)
-
-        sq_err = F.mse_loss(y_pred_log1p, y_true_log1p, reduction='none') # Shape: (n_cells, n_genes)
+        y_pred_log1p = torch.log1p(expected_value)
+        
+        sq_err = F.mse_loss(y_pred_log1p, y_true_log1p, reduction='none')
 
         n_genes = sq_err.shape[1]
         n_lineages = lineage_mask.shape[1]

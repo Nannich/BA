@@ -32,6 +32,4 @@ python3 main.py grn plot $DATASET --ground_truth
 
 echo -e "\n[4/4] Testing Symbolic"
 python3 main.py symbolic extract $DATASET --mode grn --arch smo_log
-
-DATASET="mCAD-2000-1"
 python3 main.py symbolic plot $DATASET --checkpoint models/$DATASET/symbolic/smo_log/deep_Pax6_checkpoint.pth

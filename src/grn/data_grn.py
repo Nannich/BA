@@ -5,7 +5,7 @@ from src.trajectory.zinb_models import build_kan_model
 
 def get_smoothed_expression(dataset, trajectory_model_dir, loss_type="zinb"):
     """
-    Loads saved trajectory model checkpoints to generate a smooth and denoised
+    Loads saved trajectory model checkpoints to generate a smooth
     cell-by-gene expression matrix.
     """
     n_cells = len(dataset.pseudotime)

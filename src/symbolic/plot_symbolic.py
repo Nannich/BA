@@ -7,7 +7,7 @@ import numpy as np
 from src.core.config import RESULTS_DIR, ensure_dir
 from src.core.preprocessing import run_preprocessing
 
-def plot_symbolic(checkpoint_path, dataset_obj=None, folder="./figures"):
+def plot_symbolic(checkpoint_path, dataset_obj=None, folder="./figures", scale=1.5, varscale=0.4):
     """Loads a KAN checkpoint, runs a forward pass, and plots it."""
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     sd = {k.replace("kan.", ""): v for k, v in ckpt["state_dict"].items()}
@@ -69,8 +69,18 @@ def plot_symbolic(checkpoint_path, dataset_obj=None, folder="./figures"):
 
     with torch.no_grad():
         model(torch.tensor(X, dtype=torch.float32))
+    
+    plt.rcParams.update({'font.size': 10})
+    model.plot(
+        folder=str(folder), 
+        in_vars=in_vars, 
+        out_vars=out_vars, 
+        title=f"KAN: {tgt}",
+        scale=scale,
+        varscale=varscale 
+    )
 
-    model.plot(folder=str(folder), in_vars=in_vars, out_vars=out_vars, title=f"KAN: {tgt}")
+        
     return plt.gcf()
 
 
@@ -86,7 +96,7 @@ def run_plot_symbolic(args):
         
     out_dir = ensure_dir(RESULTS_DIR / "symbolic" / args.dataset / file.parent.name)
     
-    fig = plot_symbolic(file, data, out_dir)
+    fig = plot_symbolic(file, data, out_dir, scale=1.5, varscale=0.4)
     fig.savefig(out_dir / f"{file.stem}.png", bbox_inches="tight", dpi=300)
     plt.close(fig)
     print(f"Saved completed blueprint network diagram at: {out_dir / file.stem}.png")

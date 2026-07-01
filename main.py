@@ -15,6 +15,7 @@ from src.grn.benchmark_grn import run_benchmark_grn
 
 from src.symbolic.extract_symbolic import run_symbolic_pipeline
 from src.symbolic.plot_symbolic import run_plot_symbolic
+from src.symbolic.benchmark_symbolic import run_symbolic_benchmark
 
 
 def build_parser():
@@ -32,6 +33,7 @@ def build_parser():
     traj_train.add_argument("--gene", type=str, required=True, help="Target gene identifier or 'all'.")
     traj_train.add_argument("--loss", type=str, choices=["mse", "zinb"], default="zinb")
     traj_train.add_argument("--model", type=str, choices=["kan", "mlp", "null"], default="kan")
+    traj_train.add_argument("--ridge_lambda", type=float, default=0.1, help="Ridge regularization parameter for ZINB loss.")
 
     traj_eval = traj_actions.add_parser("eval", parents=[base_dataset_parser])
     
@@ -67,17 +69,18 @@ def build_parser():
     sym_actions = parser_sym.add_subparsers(dest="action", required=True)
 
     sym_extract = sym_actions.add_parser("extract", parents=[base_dataset_parser])
-    sym_extract.add_argument("--mode", type=str, default="grn", choices=["grn", "trajectory"])
-    sym_extract.add_argument("--arch", type=str, default="smo_log_l")
+    sym_extract.add_argument("--arch", type=str, default="log_log_l")
+    sym_extract.add_argument("--skip_deep", action="store_true", help="Extract directly from the checkpoint without retraining.")
+    sym_extract.add_argument("--prune", action="store_true", help="Apply structural pruning to drop low-weight connections.")
 
     sym_plot = sym_actions.add_parser("plot", parents=[base_dataset_parser])
-    sym_plot.add_argument("--checkpoint", type=str, required=True, help="Direct path to the target .pth KAN checkpoint file.")
+    sym_plot.add_argument("--checkpoint", type=str, required=True, help="Path to target KAN checkpoint file.")
 
-    # Becnhmark
+    # Benchmark
     parser_benchmark = domain_subparsers.add_parser("benchmark", help="Run system benchmarks.")
     parser_benchmark.add_argument("search_path", type=str, help="Root directory to discover datasets.")
-    parser_benchmark.add_argument("--mode", type=str, choices=["grn", "trajectory"], default="grn",
-                                  help="Benchmark target domain: 'grn' or 'trajectory' (default: grn).")
+    parser_benchmark.add_argument("--mode", type=str, choices=["grn", "trajectory", "symbolic"], default="grn",
+                                  help="Benchmark target domain: 'grn', 'trajectory', or 'symbolic' (default: grn).")
 
     # Preprocessing
     parser_process = domain_subparsers.add_parser("process", parents=[base_dataset_parser], help="Cache dataset.")
@@ -93,6 +96,8 @@ def main():
     if args.domain == "benchmark":
         if args.mode == "trajectory":
             run_benchmark_trajectory(args)
+        elif args.mode == "symbolic":
+            run_symbolic_benchmark(args)
         else:
             run_benchmark_grn(args)
         return
@@ -138,10 +143,15 @@ def main():
             run_plot_grn(args)
 
     elif args.domain == "symbolic":
-        if args.action == "extract":
-            run_symbolic_pipeline(dataset_name=args.dataset, mode=args.mode, arch_name=args.arch)
-        elif args.action == "plot":
-            run_plot_symbolic(args)
+            if args.action == "extract":
+                run_symbolic_pipeline(
+                    dataset_name=args.dataset, 
+                    arch_name=args.arch, 
+                    skip_deep=args.skip_deep,
+                    prune=args.prune
+                )
+            elif args.action == "plot":
+                run_plot_symbolic(args)
 
 
 if __name__ == "__main__":

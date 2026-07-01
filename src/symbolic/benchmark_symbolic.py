@@ -80,7 +80,7 @@ def run_symbolic_benchmark(args):
     # Group by the parent 'DatasetType' folder and take the median across replicates
     print("\nAggregating replicates by dataset type...")
     df_combined = df_combined.drop(columns=["Replicate"])
-    df_aggregated = df_combined.groupby("DatasetType").agg(np.median)
+    df_aggregated = df_combined.groupby("DatasetType").median()
 
     # Transpose so the columns are the unique dataset types, and rows are the metrics
     df_final_matrix = df_aggregated.transpose()

@@ -35,8 +35,7 @@ SYMBOLIC_LIB['sigmoid'] = (torch_sigmoid, sympy_sigmoid, 3, lambda x, y: (x, y))
 
 
 def prune_small_coefficients(expr, thresh=0.05):
-    """Zeros out any SymPy Float coefficient below a threshold.
-    """
+    """Zeros out any SymPy Float coefficient below a threshold."""
     return expr.subs({n: 0 for n in expr.atoms(sympy.Float) if abs(n) < thresh})
 
 
@@ -86,12 +85,10 @@ def extract_symbolic_grn(checkpoint, checkpoint_path, dataset_name, tmp_dir, cus
         kan_model.remove_node(final_layer_idx, 1, mode='down')
         kan_model.remove_node(final_layer_idx, 2, mode='down')
     
+    # FIXED: Combined and corrected the duplicate pruning blocks.
+    # prune_edge executes in-place and should not be re-assigned to the model variable.
     if prune:
-        kan_model = kan_model.prune()
-        kan_model = kan_model.prune_edge(threshold=0.05)
-
-    if prune:
-        print("Pruning")
+        print("  Pruning model graph and low-weight edges...")
         kan_model = kan_model.prune()
         kan_model.prune_edge(threshold=0.05)    
     

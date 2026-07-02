@@ -54,14 +54,14 @@ The following table maps each figure and table presented in the thesis to its re
 | Thesis Reference | Description | Execution Command |
 | :--- | :--- | :--- |
 | **Table 2 (App. 6-10)** | Trajectory benchmark results | `python main.py benchmark --mode trajectory data/raw` |
-| **Figure 3** | GRN configuration benchmark results | `python main.py benchmark --mode grn data/raw` |
+| **Figure 3** | GRN inference configuration benchmark results | `python main.py benchmark --mode grn data/raw` |
 | **Table 4** | Symbolic formula extraction benchmark results | `python main.py benchmark --mode symbolic data/raw/` |
 | **Equation 10** | Deep symbolic equations for HSC-2000-1 | `python main.py symbolic extract HSC-2000-1 --prune` |
-| **Figure 9a** | Scatter plot | `python main.py trajectory plot hESC-500-CellType --mode scatter --gene GATA4` |
-| **Figure 9b** | Distribution plot | `python main.py trajectory plot hESC-500-CellType --mode distribution --gene GATA4` |
-| **Figure 10a** | MSE trajectory | `python main.py trajectory train hESC-500-CellType --gene GATA4 --loss mse`, `python main.py trajectory plot hESC-500-CellType --mode trajectory --gene GATA4 --loss mse` |
-| **Figure 10b** | ZINB trajectory | `python main.py trajectory train hESC-500-CellType --gene GATA4 --loss zinb --ridge_lambda 0.11`, `python main.py trajectory plot hESC-500-CellType --mode trajectory --gene GATA4 --loss zinb` |
-| **Figure 11** | ZINB trajectory | `python main.py trajectory train HSC-2000-1 --gene Eklf --loss zinb`, `python main.py trajectory plot HSC-2000-1 --mode trajectory --gene Eklf --loss zinb`, `python main.py symbolic plot HSC-2000-1 --checkpoint models/HSC-2000-1/trajectory/kan_Eklf_zinb.pth` |
+| **Figure 10a** | Scatter plot | `python main.py trajectory plot hESC-500-CellType --mode scatter --gene GATA4` |
+| **Figure 10b** | Distribution plot | `python main.py trajectory plot hESC-500-CellType --mode distribution --gene GATA4` |
+| **Figure 11a** | MSE trajectory | `python main.py trajectory train hESC-500-CellType --gene GATA4 --loss mse`, `python main.py trajectory plot hESC-500-CellType --mode trajectory --gene GATA4 --loss mse` |
+| **Figure 11b** | ZINB trajectory | `python main.py trajectory train hESC-500-CellType --gene GATA4 --loss zinb --ridge_lambda 0.11`, `python main.py trajectory plot hESC-500-CellType --mode trajectory --gene GATA4 --loss zinb` |
+| **Figure 12** | ZINB trajectory | `python main.py trajectory train HSC-2000-1 --gene Eklf --loss zinb`, `python main.py trajectory plot HSC-2000-1 --mode trajectory --gene Eklf --loss zinb`, `python main.py symbolic plot HSC-2000-1 --checkpoint models/HSC-2000-1/trajectory/kan_Eklf_zinb.pth` |
 | **Table 11** | Symbolic equations for HSC-2000-1 | `python main.py symbolic extract HSC-2000-1 --prune --skip_deep` |
 
-Reproduction instructions for figures 4 to 7 can be found at https://github.com/Nannich/Beeline.
+Reproduction instructions for figures 4 to 7 and 15 to 17 can be found at https://github.com/Nannich/Beeline.
